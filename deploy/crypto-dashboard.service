@@ -1,0 +1,20 @@
+[Unit]
+Description=Crypto Bot Next.js Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=zamoraattack
+WorkingDirectory=/home/zamoraattack/crypto-bot/dashboard
+EnvironmentFile=/home/zamoraattack/crypto-bot/.env
+Environment=PORT=3000
+Environment=NODE_ENV=production
+Environment=INTERNAL_API_URL=http://127.0.0.1:8000
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

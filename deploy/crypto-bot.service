@@ -1,0 +1,18 @@
+[Unit]
+Description=Crypto Trading Bot Loop
+After=network.target crypto-api.service
+Requires=crypto-api.service
+
+[Service]
+Type=simple
+User=zamoraattack
+WorkingDirectory=/home/zamoraattack/crypto-bot/backend
+EnvironmentFile=/home/zamoraattack/crypto-bot/.env
+ExecStart=/home/zamoraattack/crypto-bot/venv/bin/python3 bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
