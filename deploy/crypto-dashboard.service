@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=zamoraattack
-WorkingDirectory=/home/zamoraattack/crypto-bot/dashboard
-EnvironmentFile=/home/zamoraattack/crypto-bot/.env
+User=deploy
+WorkingDirectory=/home/deploy/crypto-bot/dashboard
+EnvironmentFile=/home/deploy/crypto-bot/.env
 Environment=PORT=3000
 Environment=NODE_ENV=production
 Environment=INTERNAL_API_URL=http://127.0.0.1:8000

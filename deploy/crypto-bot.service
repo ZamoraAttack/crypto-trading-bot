@@ -5,10 +5,10 @@ Requires=crypto-api.service
 
 [Service]
 Type=simple
-User=zamoraattack
-WorkingDirectory=/home/zamoraattack/crypto-bot/backend
-EnvironmentFile=/home/zamoraattack/crypto-bot/.env
-ExecStart=/home/zamoraattack/crypto-bot/venv/bin/python3 bot.py
+User=deploy
+WorkingDirectory=/home/deploy/crypto-bot/backend
+EnvironmentFile=/home/deploy/crypto-bot/.env
+ExecStart=/home/deploy/crypto-bot/venv/bin/python3 bot.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

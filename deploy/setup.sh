@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # Crypto Bot — VPS setup script
-# Run once on: ssh zamoraattack@31.220.49.156
+# Run once on: ssh youruser@your-server-ip
 # Usage: bash deploy/setup.sh
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-PROJ_DIR="/home/zamoraattack/crypto-bot"
+PROJ_DIR="/home/youruser/crypto-bot"
 VENV_DIR="$PROJ_DIR/venv"
 SYSTEMD_DIR="/etc/systemd/system"
 
@@ -56,5 +56,5 @@ echo " 1. Edit $PROJ_DIR/.env with your API keys + secrets"
 echo " 2. sudo systemctl start crypto-api"
 echo " 3. sudo systemctl start crypto-dashboard"
 echo " 4. sudo systemctl start crypto-bot  (paper mode first!)"
-echo " 5. Dashboard: http://31.220.49.156"
+echo " 5. Dashboard: http://your-server-ip"
 echo "========================================================="
