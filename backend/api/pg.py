@@ -113,6 +113,64 @@ async def get_trades_summary(bot: str | None = Query(None)) -> dict:
     return d
 
 
+# ── Revenue ───────────────────────────────────────────────────────────────────
+
+POLYMARKET_MONTHLY_GOAL_USD = 1000.0  # from Polymarket bot strategy notes; edit here if the goal changes
+
+
+@router.get("/revenue")
+async def get_revenue(months: int = Query(6, le=24)) -> dict:
+    pool = await get_pool()
+    if not pool:
+        return {}
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT date_trunc('month', closed_at) AS month, bot_name, COALESCE(SUM(pnl_usd), 0) AS pnl
+            FROM trades
+            WHERE status = 'closed' AND closed_at IS NOT NULL
+              AND closed_at >= NOW() - ($1 || ' months')::interval
+            GROUP BY month, bot_name
+            ORDER BY month
+            """,
+            str(months),
+        )
+
+    by_month: dict[str, dict[str, float]] = {}
+    for r in rows:
+        key = r["month"].date().isoformat()[:7]  # "YYYY-MM"
+        by_month.setdefault(key, {"crypto_pnl": 0.0, "polymarket_pnl": 0.0})
+        by_month[key][f"{r['bot_name']}_pnl"] = round(float(r["pnl"]), 4)
+
+    monthly = [
+        {
+            "month": month,
+            "crypto_pnl": vals["crypto_pnl"],
+            "polymarket_pnl": vals["polymarket_pnl"],
+            "total_pnl": round(vals["crypto_pnl"] + vals["polymarket_pnl"], 4),
+        }
+        for month, vals in sorted(by_month.items())
+    ]
+
+    current_key = datetime.now().date().isoformat()[:7]
+    current = next((m for m in monthly if m["month"] == current_key), None) or {
+        "crypto_pnl": 0.0, "polymarket_pnl": 0.0, "total_pnl": 0.0,
+    }
+    polymarket_pnl = current["polymarket_pnl"]
+    goal_pct = round(max(polymarket_pnl, 0) / POLYMARKET_MONTHLY_GOAL_USD * 100, 1)
+
+    return {
+        "current_month": {
+            "crypto_pnl": current["crypto_pnl"],
+            "polymarket_pnl": polymarket_pnl,
+            "total_pnl": current["total_pnl"],
+            "polymarket_goal_usd": POLYMARKET_MONTHLY_GOAL_USD,
+            "polymarket_goal_pct": goal_pct,
+        },
+        "monthly": monthly,
+    }
+
+
 # ── Signals ───────────────────────────────────────────────────────────────────
 
 @router.get("/signals")

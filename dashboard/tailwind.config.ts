@@ -25,13 +25,36 @@ const config: Config = {
         card:           "0 4px 24px rgba(0,0,0,0.4)",
       },
       animation: {
-        "pulse-slow": "pulse 3s cubic-bezier(0.4,0,0.6,1) infinite",
-        "fade-in":    "fadeIn 0.3s ease",
+        "pulse-slow":       "pulse 3s cubic-bezier(0.4,0,0.6,1) infinite",
+        "fade-in":          "fadeIn 0.3s ease",
+        "spin-slow":        "spin 18s linear infinite",
+        "spin-slower":      "spin 32s linear infinite",
+        "spin-reverse-slow":"spin-reverse 24s linear infinite",
+        "pulse-glow":       "pulseGlow 4s ease-in-out infinite",
+        "planet-idle":      "planetIdle 7s ease-in-out infinite",
+        "particle-emit":    "particleEmit 2.6s ease-out infinite",
       },
       keyframes: {
         fadeIn: {
           "0%":   { opacity: "0", transform: "translateY(4px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "spin-reverse": {
+          "0%":   { transform: "rotate(360deg)" },
+          "100%": { transform: "rotate(0deg)" },
+        },
+        pulseGlow: {
+          "0%, 100%": { opacity: "0.7", filter: "brightness(1)" },
+          "50%":      { opacity: "1",   filter: "brightness(1.35)" },
+        },
+        planetIdle: {
+          "0%, 100%": { transform: "translateY(0px) rotate(-4deg)" },
+          "50%":      { transform: "translateY(-5px) rotate(4deg)" },
+        },
+        particleEmit: {
+          "0%":   { transform: "translate(0, 0) scale(1)",     opacity: "0" },
+          "15%":  { opacity: "0.9" },
+          "100%": { transform: "translate(var(--dx, 6px), -18px) scale(0.4)", opacity: "0" },
         },
       },
     },

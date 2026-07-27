@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
-from api import control, pg, polymarket, positions, risk, signals, trades
+from api import control, memory, pg, polymarket, positions, risk, signals, trades
 from config import cfg
 from database import init_db
 
@@ -82,6 +82,7 @@ app.include_router(risk.router)
 app.include_router(control.router)
 app.include_router(polymarket.router)
 app.include_router(pg.router)
+app.include_router(memory.router)
 
 
 # ── WebSocket broadcast ───────────────────────────────────────────────────────

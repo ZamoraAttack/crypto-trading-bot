@@ -1,6 +1,5 @@
 import { api } from "@/lib/api";
 import type { PgTrade } from "@/lib/api";
-import NavBar from "@/components/NavBar";
 import clsx from "clsx";
 
 export const revalidate = 15;
@@ -29,9 +28,7 @@ export default async function TradesPage() {
   ]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavBar />
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
         <div>
           <h1 className="text-2xl font-bold text-white">Trade History</h1>
@@ -124,7 +121,6 @@ export default async function TradesPage() {
         </div>
 
       </main>
-    </div>
   );
 }
 

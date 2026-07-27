@@ -9,6 +9,19 @@ async function fetcher<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function poster<T>(path: string, body: unknown): Promise<T> {
+  // Same server/client base split as fetcher() — this is called both from
+  // client components (MemoryForm) and server-side (the voice API route).
+  const base = typeof window === "undefined" ? BACKEND_DIRECT : API_BASE;
+  const res = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   health:             () => fetcher<{ status: string; mode: string }>("/health"),
   signals:            () => fetcher<Signal[]>("/signals?limit=50"),
@@ -44,6 +57,22 @@ export const api = {
       fetcher<PgLog[]>(`/pg/logs?limit=100${bot ? `&bot=${bot}` : ""}${level ? `&level=${level}` : ""}`),
     balances: (bot?: string)                 =>
       fetcher<PgBalance[]>(`/pg/balances${bot ? `?bot=${bot}` : ""}`),
+    revenue:  (months = 6)                   =>
+      fetcher<PgRevenue>(`/pg/revenue?months=${months}`),
+  },
+
+  // ── Memory Layer ─────────────────────────────────────────────────────────
+  memory: {
+    list: (opts: { category?: string; q?: string; limit?: number } = {}) => {
+      const params = new URLSearchParams();
+      if (opts.category) params.set("category", opts.category);
+      if (opts.q) params.set("q", opts.q);
+      if (opts.limit) params.set("limit", String(opts.limit));
+      const qs = params.toString();
+      return fetcher<Memory[]>(`/memory${qs ? `?${qs}` : ""}`);
+    },
+    create: (body: { category: string; title: string; content: string; metadata?: Record<string, unknown>; source?: string }) =>
+      poster<Memory>("/memory", body),
   },
 };
 
@@ -174,6 +203,34 @@ export interface PgBalance {
   available_usd: number;
   locked_usd:    number;
   recorded_at:   string;
+}
+
+export interface PgRevenueMonth {
+  month:          string; // "YYYY-MM"
+  crypto_pnl:     number;
+  polymarket_pnl: number;
+  total_pnl:      number;
+}
+
+export interface PgRevenue {
+  current_month: {
+    crypto_pnl:          number;
+    polymarket_pnl:      number;
+    total_pnl:           number;
+    polymarket_goal_usd: number;
+    polymarket_goal_pct: number;
+  };
+  monthly: PgRevenueMonth[];
+}
+
+export interface Memory {
+  id:         number;
+  category:   string;
+  title:      string;
+  content:    string;
+  metadata:   Record<string, unknown> | null;
+  source:     string;
+  created_at: string;
 }
 
 export interface PgSummary {

@@ -95,6 +95,18 @@ class SystemEvent(Base):
     data        = Column(Text, nullable=True)
 
 
+class Memory(Base):
+    __tablename__ = "memories"
+
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    category   = Column(String(30), nullable=False, index=True)  # decision | goal | business_knowledge | relationship | conversation | experiment | outcome | agent_history
+    title      = Column(String(200), nullable=False)
+    content    = Column(Text, nullable=False)
+    extra      = Column("metadata", JSONB, nullable=True)
+    source     = Column(String(30), nullable=False, default="manual")  # manual | voice | <future agent name>
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

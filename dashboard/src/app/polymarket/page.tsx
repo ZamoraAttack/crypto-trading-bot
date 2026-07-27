@@ -1,6 +1,5 @@
 import { api } from "@/lib/api";
 import type { PgTrade, PgBotStatus, PmPositionLive, PmEquityCurve, PmStats } from "@/lib/api";
-import NavBar from "@/components/NavBar";
 import EquityCurveChart from "@/components/EquityCurveChart";
 import clsx from "clsx";
 
@@ -40,7 +39,6 @@ export default async function PolymarketPage() {
 
   return (
     <div className="min-h-screen bg-[#0F1117]">
-      <NavBar />
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6 text-[#E6EDF3]">
 
         <div>

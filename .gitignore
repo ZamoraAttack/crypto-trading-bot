@@ -20,6 +20,7 @@ node_modules/
 dist/
 build/
 npm-debug.log*
+*.tsbuildinfo
 
 # Runtime data / logs
 data/
