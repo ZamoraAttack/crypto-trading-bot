@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
 import { api } from "@/lib/api";
+import { searchEmails, isConnected as isGmailConnected } from "@/lib/gmail";
 
 const client = new Anthropic();
 
@@ -103,6 +104,27 @@ const tools = [
       additionalProperties: false,
     },
     run: async ({ category, query }) => JSON.stringify(await api.memory.list({ category, q: query })),
+  }),
+  betaTool({
+    name: "search_emails",
+    description: "Search Alan's tech/AI-ops Gmail inbox (zamoraattack@gmail.com) — the account tied to his VPS, Hostinger, and Anthropic Console billing. Use this for anything email-related: billing issues, VPS notices, service alerts. Only searches the Primary category, so results are never promotions/spam/social.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Gmail search syntax, e.g. 'from:anthropic', 'subject:billing', 'is:unread'. Omit to get the most recent primary-inbox emails." },
+      },
+      additionalProperties: false,
+    },
+    run: async ({ query }) => {
+      if (!(await isGmailConnected())) {
+        return JSON.stringify({ error: "Gmail is not connected yet. Tell Alan to visit the Connectors page to connect it." });
+      }
+      try {
+        return JSON.stringify(await searchEmails(query ?? ""));
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : "Gmail search failed." });
+      }
+    },
   }),
 ];
 

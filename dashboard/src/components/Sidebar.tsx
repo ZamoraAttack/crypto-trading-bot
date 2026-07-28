@@ -9,6 +9,7 @@ import XrpIcon from "@/components/jarvis/XrpIcon";
 const LINKS: { href: string; label: string; icon: ReactNode }[] = [
   { href: "/",           label: "ZAMO",       icon: "🏠" },
   { href: "/memory",     label: "Memory",     icon: "🧠" },
+  { href: "/connectors", label: "Connectors", icon: "🔌" },
   { href: "/crypto",     label: "Crypto Bot", icon: <XrpIcon className="w-4 h-4" /> },
   { href: "/polymarket", label: "Polymarket", icon: "◈" },
   { href: "/revenue",    label: "Revenue",    icon: "💰" },

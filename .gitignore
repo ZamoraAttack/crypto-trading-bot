@@ -4,6 +4,7 @@
 *.pem
 *.key
 coinbase_key.json
+.gmail-token.json
 
 # Python
 __pycache__/
