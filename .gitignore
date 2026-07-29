@@ -5,6 +5,7 @@
 *.key
 coinbase_key.json
 .gmail-token.json
+.calendar-token.json
 
 # Python
 __pycache__/

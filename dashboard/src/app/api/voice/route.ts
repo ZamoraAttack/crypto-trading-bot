@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
 import { api } from "@/lib/api";
 import { searchEmails, isConnected as isGmailConnected } from "@/lib/gmail";
+import { getUpcomingEvents, isConnected as isCalendarConnected } from "@/lib/calendar";
 
 const client = new Anthropic();
 
@@ -123,6 +124,27 @@ const tools = [
         return JSON.stringify(await searchEmails(query ?? ""));
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : "Gmail search failed." });
+      }
+    },
+  }),
+  betaTool({
+    name: "get_upcoming_events",
+    description: "Get Alan's upcoming calendar events (zamoraattack@gmail.com's primary calendar) — use for 'what's on my day/week', scheduling questions, or checking for conflicts before suggesting a meeting time.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        max_results: { type: "number", description: "How many upcoming events to return. Defaults to 10." },
+      },
+      additionalProperties: false,
+    },
+    run: async ({ max_results }) => {
+      if (!(await isCalendarConnected())) {
+        return JSON.stringify({ error: "Calendar is not connected yet. Tell Alan to visit the Connectors page to connect it." });
+      }
+      try {
+        return JSON.stringify(await getUpcomingEvents(max_results));
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : "Calendar fetch failed." });
       }
     },
   }),
