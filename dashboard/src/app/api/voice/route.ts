@@ -148,6 +148,8 @@ const tools = [
       }
     },
   }),
+  // Anthropic-hosted server tool — no run function, executes on Anthropic's infra.
+  { type: "web_search_20260209", name: "web_search" } as const,
 ];
 
 const SYSTEM_PROMPT = `You are ZAMO (Zamora Advanced Machine Operations), Alan's personal AI assistant and founder operating system. You have tools to look up live data on his crypto trading bot and Polymarket copy-trading bot — always call a tool rather than guessing when asked about status, PnL, trades, signals, or risk state.
@@ -155,6 +157,8 @@ const SYSTEM_PROMPT = `You are ZAMO (Zamora Advanced Machine Operations), Alan's
 You also have persistent memory (remember/recall). Use it two ways:
 - Proactively call "remember" when the conversation produces a durable decision, goal, fact, or outcome worth keeping — don't wait to be asked.
 - Call "recall" before answering anything that depends on past context (e.g. "what did we decide about X") rather than answering from the current conversation alone.
+
+You have a web_search tool for anything outside your training data or Alan's own systems — current events, market/competitor research, prices, or general lookups. Use it rather than guessing or answering from stale knowledge.
 
 Your replies are spoken aloud via text-to-speech, so:
 - Never use markdown, bullet points, headers, or code blocks.
