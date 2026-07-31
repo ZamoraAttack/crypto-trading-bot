@@ -20,7 +20,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <ZamoAssistantProvider>
       <div className="flex min-h-screen bg-background">
         <Sidebar />
-        <div className="flex-1 min-w-0 h-screen overflow-y-auto">
+        {/* pt-16 on mobile only — clearance for the fixed hamburger button (Sidebar.tsx), which
+            otherwise overlaps every page's own title in the same top-left corner. Desktop is
+            unaffected (md:pt-0) since the hamburger itself is md:hidden there. */}
+        <div className="flex-1 min-w-0 h-screen overflow-y-auto pt-16 md:pt-0">
           {children}
         </div>
       </div>

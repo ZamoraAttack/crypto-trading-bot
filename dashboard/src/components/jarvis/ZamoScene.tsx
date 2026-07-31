@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useMemo, useState, type ReactNode } from "react";
-import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useRef, useMemo, useState, useEffect, type ReactNode } from "react";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Stars, Html, Billboard } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useRouter } from "next/navigation";
@@ -1578,6 +1578,25 @@ function SceneContents({ nodes, onNavigate }: { nodes: ZamoNodeConfig[]; onNavig
   );
 }
 
+// Widens the FOV on narrow viewports only — a real fix for the mobile integration-pass finding
+// that the side node labels (Payroll MVP, Polymarket) got cut off past the screen edge on a
+// ~390px phone. The labels are centered on their node's 3D-projected screen position, so at the
+// edge of a narrow frame there's no room on the outer side; zooming out (wider FOV) pulls the
+// whole node ring further from the frame edges, giving the labels room without touching the
+// locked desktop composition at all (unaffected above the 500px threshold).
+function ResponsiveCamera() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    const targetFov = size.width < 500 ? 52 : 30;
+    if (camera.fov !== targetFov) {
+      camera.fov = targetFov;
+      camera.updateProjectionMatrix();
+    }
+  }, [size.width, camera]);
+  return null;
+}
+
 export default function ZamoScene({ planets }: { planets: ZamoNodeConfig[] }) {
   const router = useRouter();
 
@@ -1587,6 +1606,7 @@ export default function ZamoScene({ planets }: { planets: ZamoNodeConfig[] }) {
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: true }}
     >
+      <ResponsiveCamera />
       <SceneContents nodes={planets} onNavigate={(href) => router.push(href)} />
       <EffectComposer>
         {/* dialed back deliberately — contrast against the dark background should create the
