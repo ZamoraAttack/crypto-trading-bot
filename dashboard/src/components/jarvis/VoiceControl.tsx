@@ -2,13 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
-
-type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "unsupported";
-
-interface ChatTurn {
-  role: "user" | "assistant";
-  content: string;
-}
+import { useZamoAssistant } from "@/components/ZamoAssistantProvider";
 
 // Web Speech API isn't in lib.dom.d.ts yet — minimal shape for what we use.
 interface SpeechRecognitionResultLike {
@@ -32,13 +26,17 @@ interface SpeechRecognitionLike extends EventTarget {
 const VOICE_STORAGE_KEY = "zamo-voice-uri";
 
 export default function VoiceControl() {
-  const [state, setState] = useState<VoiceState>("idle");
-  const [transcript, setTranscript] = useState("");
+  // shared brain — status/history/sendMessage all come from ZamoAssistantProvider so this
+  // component and the in-OS text panel are two windows into the same conversation, not two
+  // separate assistants. "unsupported" (no browser Speech API) stays local — it's a fact about
+  // this surface, not a ZAMO-wide status.
+  const { status, setStatus, sendMessage } = useZamoAssistant();
+  const [unsupported, setUnsupported] = useState(false);
+  const [transcript, setTranscript] = useState(""); // live interim STT text — inherently voice-only
   const [reply, setReply] = useState("");
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState("");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const historyRef = useRef<ChatTurn[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -75,7 +73,7 @@ export default function VoiceControl() {
     };
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Ctor) {
-      setState("unsupported");
+      setUnsupported(true);
       return;
     }
 
@@ -91,9 +89,9 @@ export default function VoiceControl() {
         void handleFinalTranscript(last[0].transcript);
       }
     };
-    recognition.onerror = () => setState("idle");
+    recognition.onerror = () => setStatus("idle");
     recognition.onend = () => {
-      setState((s) => (s === "listening" ? "idle" : s));
+      setStatus((s) => (s === "listening" ? "idle" : s));
     };
 
     recognitionRef.current = recognition;
@@ -102,59 +100,44 @@ export default function VoiceControl() {
 
   const handleFinalTranscript = useCallback(async (text: string) => {
     if (!text.trim()) {
-      setState("idle");
+      setStatus("idle");
       return;
     }
-    setState("thinking");
     setReply("");
 
-    try {
-      const res = await fetch("/api/voice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: historyRef.current }),
-      });
-      const data = (await res.json()) as { reply?: string; error?: string };
-      const replyText = data.reply || "Sorry, I couldn't get a response.";
+    const replyText = await sendMessage(text, "voice");
+    setReply(replyText);
+    // "working" while ZAMO is actively speaking the reply — voice's equivalent of the old
+    // "speaking" state, folded into the shared vocabulary's "working" rather than a 7th state
+    setStatus("working");
 
-      const userTurn: ChatTurn = { role: "user", content: text };
-      const assistantTurn: ChatTurn = { role: "assistant", content: replyText };
-      historyRef.current = [...historyRef.current, userTurn, assistantTurn].slice(-10);
-
-      setReply(replyText);
-      setState("speaking");
-
-      const utterance = new SpeechSynthesisUtterance(replyText);
-      const chosenVoice = voices.find((v) => v.voiceURI === selectedVoiceURI);
-      if (chosenVoice) utterance.voice = chosenVoice;
-      utterance.onend = () => setState("idle");
-      utterance.onerror = () => setState("idle");
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      setReply("Something went wrong reaching ZAMO.");
-      setState("idle");
-    }
-  }, [voices, selectedVoiceURI]);
+    const utterance = new SpeechSynthesisUtterance(replyText);
+    const chosenVoice = voices.find((v) => v.voiceURI === selectedVoiceURI);
+    if (chosenVoice) utterance.voice = chosenVoice;
+    utterance.onend = () => setStatus("idle");
+    utterance.onerror = () => setStatus("idle");
+    window.speechSynthesis.speak(utterance);
+  }, [voices, selectedVoiceURI, sendMessage, setStatus]);
 
   function toggleListening() {
     const recognition = recognitionRef.current;
     if (!recognition) return;
 
-    if (state === "listening") {
+    if (status === "listening") {
       recognition.stop();
-      setState("idle");
+      setStatus("idle");
       return;
     }
 
-    if (state === "thinking" || state === "speaking") return;
+    if (status === "thinking" || status === "working") return;
 
     setTranscript("");
     setReply("");
-    setState("listening");
+    setStatus("listening");
     recognition.start();
   }
 
-  if (state === "unsupported") {
+  if (unsupported) {
     return (
       <p className="text-[10px] uppercase tracking-[0.2em] text-muted pointer-events-none select-none">
         Voice not supported in this browser
@@ -162,25 +145,25 @@ export default function VoiceControl() {
     );
   }
 
-  const displayText = state === "listening" ? transcript : state === "speaking" || state === "thinking" ? reply : "";
+  const displayText = status === "listening" ? transcript : status === "working" || status === "thinking" ? reply : "";
 
   return (
     <div className="flex flex-col items-center gap-2 select-none">
       <button
         onClick={toggleListening}
-        disabled={state === "thinking" || state === "speaking"}
+        disabled={status === "thinking" || status === "working"}
         className="w-9 h-9 rounded-full flex items-center justify-center border border-accent-2/40 bg-black/20 backdrop-blur-sm hover:border-accent-2 transition-colors disabled:opacity-50"
-        style={{ boxShadow: state === "listening" ? "0 0 16px rgba(34,211,238,0.6)" : undefined }}
-        title={state === "listening" ? "Stop listening" : "Ask ZAMO"}
+        style={{ boxShadow: status === "listening" ? "0 0 16px rgba(34,211,238,0.6)" : undefined }}
+        title={status === "listening" ? "Stop listening" : "Ask ZAMO"}
       >
-        {state === "listening" ? (
+        {status === "listening" ? (
           <Mic className="w-4 h-4 text-accent-2 animate-pulse" />
         ) : (
           <MicOff className="w-4 h-4 text-white/60" />
         )}
       </button>
 
-      {voices.length > 0 && state === "idle" && (
+      {voices.length > 0 && status === "idle" && (
         <select
           value={selectedVoiceURI}
           onChange={(e) => handleVoiceChange(e.target.value)}
@@ -197,13 +180,13 @@ export default function VoiceControl() {
         </select>
       )}
 
-      {state === "thinking" && (
+      {status === "thinking" && (
         <p className="text-[10px] uppercase tracking-[0.2em] text-muted pointer-events-none animate-pulse-slow">
           Thinking…
         </p>
       )}
 
-      {displayText && state !== "thinking" && (
+      {displayText && status !== "thinking" && (
         <p
           className="text-xs text-center max-w-xs tabnum pointer-events-none"
           style={{ color: "#e0e7ff", textShadow: "0 0 6px rgba(224,231,255,0.5)" }}

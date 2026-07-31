@@ -89,7 +89,7 @@ const tools = [
       additionalProperties: false,
     },
     run: async ({ category, title, content }) => {
-      const saved = await api.memory.create({ category, title, content, source: "voice" });
+      const saved = await api.memory.create({ category, title, content, source: "assistant" });
       return JSON.stringify(saved);
     },
   }),
@@ -152,37 +152,52 @@ const tools = [
   { type: "web_search_20260209", name: "web_search" } as const,
 ];
 
-const SYSTEM_PROMPT = `You are ZAMO (Zamora Advanced Machine Operations), Alan's personal AI assistant and founder operating system. You have tools to look up live data on his crypto trading bot and Polymarket copy-trading bot — always call a tool rather than guessing when asked about status, PnL, trades, signals, or risk state.
+// Shared base prompt for every surface (voice, in-OS text, future Telegram) — same brain,
+// same tools, same memory, regardless of where the message came from. Only the output-format
+// guidance at the end differs per surface (see SURFACE_SUFFIX).
+const BASE_SYSTEM_PROMPT = `You are ZAMO (Zamora Advanced Machine Operations), Alan's personal AI assistant and founder operating system. You have tools to look up live data on his crypto trading bot and Polymarket copy-trading bot — always call a tool rather than guessing when asked about status, PnL, trades, signals, or risk state.
 
 You also have persistent memory (remember/recall). Use it two ways:
 - Proactively call "remember" when the conversation produces a durable decision, goal, fact, or outcome worth keeping — don't wait to be asked.
 - Call "recall" before answering anything that depends on past context (e.g. "what did we decide about X") rather than answering from the current conversation alone.
 
-You have a web_search tool for anything outside your training data or Alan's own systems — current events, market/competitor research, prices, or general lookups. Use it rather than guessing or answering from stale knowledge.
+You have a web_search tool for anything outside your training data or Alan's own systems — current events, market/competitor research, prices, or general lookups. Use it rather than guessing or answering from stale knowledge.`;
+
+const SURFACE_SUFFIX: Record<"voice" | "text", string> = {
+  voice: `
 
 Your replies are spoken aloud via text-to-speech, so:
 - Never use markdown, bullet points, headers, or code blocks.
 - Keep answers short and conversational — a sentence or two unless the user asks for detail.
-- Read numbers naturally (e.g. "up forty two dollars" not "+$42.00").`;
+- Read numbers naturally (e.g. "up forty two dollars" not "+$42.00").`,
+  text: `
 
-interface VoiceRequestBody {
+Your replies are shown in a text chat panel inside the dashboard, so:
+- Plain prose is fine; avoid heavy markdown (no headers, tables, or code blocks) since the panel is a simple chat view, not a document renderer.
+- Keep answers concise — a short paragraph unless the user asks for detail.
+- Numbers can be written normally (e.g. "+$42.00").`,
+};
+
+interface AssistantRequestBody {
   message: string;
   history?: { role: "user" | "assistant"; content: string }[];
+  surface?: "voice" | "text";
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as VoiceRequestBody;
+  const body = (await request.json()) as AssistantRequestBody;
 
   if (!body.message || typeof body.message !== "string") {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
+  const surface = body.surface === "text" ? "text" : "voice";
   const history = (body.history ?? []).slice(-10);
 
   const runner = client.beta.messages.toolRunner({
     model: "claude-opus-4-8",
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: BASE_SYSTEM_PROMPT + SURFACE_SUFFIX[surface],
     tools,
     messages: [...history, { role: "user", content: body.message }],
   });

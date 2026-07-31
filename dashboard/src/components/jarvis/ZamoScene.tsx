@@ -7,6 +7,27 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import PlanetInfoCard from "./PlanetInfoCard";
+import { useZamoAssistant, type ZamoStatus } from "@/components/ZamoAssistantProvider";
+
+// Shared ZAMO status → Core tint, per the Communications Layer's 6-state vocabulary. idle has
+// mix 0 (bit-for-bit the locked look); every other state blends in a restrained, low-mix tint —
+// never a full color swap, per the "no excessive glow, stay restrained" brief the Core itself
+// was locked under. notification/urgent aren't wired to a live trigger yet (no Agents/
+// Automation exist to raise them) — the mapping exists so those phases have something to plug
+// into, not because anything sets these today.
+// Mix values tuned up from an initial 0.14-0.24 pass, which turned out visually undetectable —
+// the plasma layers' own colors are already bright/near-blown-out (values >1.0 pre-clamp for the
+// ignition points), so a subtle tint washes out completely against them. Confirmed the wiring
+// itself was correct via an extreme diagnostic value before retuning these — the fix was
+// magnitude, not a bug.
+const STATUS_TINTS: Record<ZamoStatus, { color: string; mix: number }> = {
+  idle:         { color: "#000000", mix: 0 },
+  listening:    { color: "#67e8f9", mix: 0.3 },
+  thinking:     { color: "#a78bfa", mix: 0.3 },
+  working:      { color: "#fbbf24", mix: 0.32 },
+  notification: { color: "#67e8f9", mix: 0.36 },
+  urgent:       { color: "#ef4444", mix: 0.42 },
+};
 
 export interface ZamoNodeConfig {
   id:     string;
@@ -35,9 +56,12 @@ const NODE_RING_RADIUS = 1.78 * SYSTEM_SCALE;
 const NODE_RING_TILT: [number, number, number] = [0.18, 0, -0.05];
 
 // Dedicated nucleus shader — woven, flowing plasma filaments (domain-warped noise banding).
+// uStatusColor/uStatusMix (added for the Communications Layer's shared ZAMO status) blend in as
+// the very last step, after every locked visual decision — at uStatusMix=0 (idle) the output is
+// bit-for-bit the locked look; the tint only appears when the shared status actually changes.
 function createNucleusMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uStatusColor: { value: new THREE.Color("#000000") }, uStatusMix: { value: 0 } },
     vertexShader: `
       varying vec3 vNormal;
       varying vec3 vObjectNormal;
@@ -52,6 +76,8 @@ function createNucleusMaterial() {
     `,
     fragmentShader: `
       uniform float uTime;
+      uniform vec3 uStatusColor;
+      uniform float uStatusMix;
       varying vec3 vNormal;
       varying vec3 vObjectNormal;
       varying vec3 vViewDir;
@@ -173,7 +199,10 @@ function createNucleusMaterial() {
         // ~15% overall brightness reduction — contrast against the dark background should read
         // as intensity, not raw luminosity; ignition points still clear the bloom threshold since
         // they were pushed well past 1.0 to begin with
-        gl_FragColor = vec4(color * breathe * 0.85, alpha);
+        vec3 finalColor = color * breathe * 0.85;
+        // shared-status tint, blended in last — zero effect at rest (uStatusMix starts at 0)
+        finalColor = mix(finalColor, uStatusColor, uStatusMix);
+        gl_FragColor = vec4(finalColor, alpha);
       }
     `,
     transparent: true,
@@ -196,7 +225,7 @@ function createNucleusMaterial() {
 // animated turbulence fields rather than a single flat shell.
 function createInnerCoreMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uStatusColor: { value: new THREE.Color("#000000") }, uStatusMix: { value: 0 } },
     vertexShader: `
       varying vec3 vObjectNormal;
       void main() {
@@ -206,6 +235,8 @@ function createInnerCoreMaterial() {
     `,
     fragmentShader: `
       uniform float uTime;
+      uniform vec3 uStatusColor;
+      uniform float uStatusMix;
       varying vec3 vObjectNormal;
 
       float hash(vec3 p) {
@@ -237,7 +268,8 @@ function createInnerCoreMaterial() {
         vec3 color = mix(cDeep, cHot, smoothstep(0.35, 0.85, glow));
 
         float pulse = 0.85 + 0.15 * sin(uTime * 1.3);
-        gl_FragColor = vec4(color * pulse * 0.85, 0.65);
+        vec3 finalColor = mix(color * pulse * 0.85, uStatusColor, uStatusMix);
+        gl_FragColor = vec4(finalColor, 0.65);
       }
     `,
     transparent: true,
@@ -248,7 +280,19 @@ function createInnerCoreMaterial() {
 
 function InnerCore() {
   const material = useMemo(() => createInnerCoreMaterial(), []);
-  useFrame((state) => { material.uniforms.uTime.value = state.clock.elapsedTime; });
+  const { status } = useZamoAssistant();
+  const statusColorRef = useRef(new THREE.Color("#000000"));
+  const statusMixRef = useRef(0);
+  useFrame((state, delta) => {
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    const target = STATUS_TINTS[status];
+    // smoothed, not snapped — responsive enough to feel connected to the status change
+    // (~1s) without the jarring instant pop a direct assignment would give
+    statusColorRef.current.lerp(new THREE.Color(target.color), Math.min(delta * 2.5, 1));
+    statusMixRef.current += (target.mix - statusMixRef.current) * Math.min(delta * 2.5, 1);
+    material.uniforms.uStatusColor.value.copy(statusColorRef.current);
+    material.uniforms.uStatusMix.value = statusMixRef.current;
+  });
   return (
     <mesh material={material} renderOrder={0}>
       <sphereGeometry args={[NUCLEUS_RADIUS * 0.6, 32, 32]} />
@@ -620,6 +664,8 @@ function createContainmentShellMaterial() {
     uniforms: {
       uTime:  { value: 0 },
       uColor: { value: new THREE.Color("#dbeafe") },
+      uStatusColor: { value: new THREE.Color("#000000") },
+      uStatusMix:   { value: 0 },
     },
     vertexShader: `
       varying vec3 vNormal;
@@ -636,6 +682,8 @@ function createContainmentShellMaterial() {
     fragmentShader: `
       uniform float uTime;
       uniform vec3 uColor;
+      uniform vec3 uStatusColor;
+      uniform float uStatusMix;
       varying vec3 vNormal;
       varying vec3 vObjectNormal;
       varying vec3 vViewDir;
@@ -680,6 +728,10 @@ function createContainmentShellMaterial() {
 
         float alpha = clamp((0.03 + fresnel * 0.42) * (0.08 + patchField * 0.92) + spec * 0.3, 0.0, 1.0);
         vec3 color = uColor * (0.55 + fresnel * 0.75) + vec3(1.0) * spec * 0.4;
+        // this layer is the most visually dominant part of the Core (the big outer ring), so the
+        // shared-status tint is most visible here — a stronger multiplier (1.8x) than the plasma
+        // layers, whose brightness is already closer to blown-out and dilutes any tint applied
+        color = mix(color, uStatusColor, clamp(uStatusMix * 1.8, 0.0, 0.5));
 
         gl_FragColor = vec4(color, alpha);
       }
@@ -692,7 +744,17 @@ function createContainmentShellMaterial() {
 
 function ContainmentShell() {
   const material = useMemo(() => createContainmentShellMaterial(), []);
-  useFrame((state) => { material.uniforms.uTime.value = state.clock.elapsedTime; });
+  const { status } = useZamoAssistant();
+  const statusColorRef = useRef(new THREE.Color("#000000"));
+  const statusMixRef = useRef(0);
+  useFrame((state, delta) => {
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    const target = STATUS_TINTS[status];
+    statusColorRef.current.lerp(new THREE.Color(target.color), Math.min(delta * 2.5, 1));
+    statusMixRef.current += (target.mix - statusMixRef.current) * Math.min(delta * 2.5, 1);
+    material.uniforms.uStatusColor.value.copy(statusColorRef.current);
+    material.uniforms.uStatusMix.value = statusMixRef.current;
+  });
   return (
     <mesh material={material} renderOrder={2}>
       {/* pulled back in from 1.34x after the core-scale reduction made it crowd the node labels
@@ -707,11 +769,20 @@ function Core() {
   const nucleusRot = useRef({ x: 0, y: 0, z: 0 });
 
   const material = useMemo(() => createNucleusMaterial(), []);
+  const { status } = useZamoAssistant();
+  const statusColorRef = useRef(new THREE.Color("#000000"));
+  const statusMixRef = useRef(0);
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
 
     material.uniforms.uTime.value = t;
+
+    const target = STATUS_TINTS[status];
+    statusColorRef.current.lerp(new THREE.Color(target.color), Math.min(delta * 2.5, 1));
+    statusMixRef.current += (target.mix - statusMixRef.current) * Math.min(delta * 2.5, 1);
+    material.uniforms.uStatusColor.value.copy(statusColorRef.current);
+    material.uniforms.uStatusMix.value = statusMixRef.current;
 
     if (innerRef.current) {
       // the nucleus is the one place motion stays genuinely alive — everything else in the
