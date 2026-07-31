@@ -29,10 +29,7 @@ export default function BotCard({ bot }: { bot: BotStatus }) {
   const live    = bot.mode === "live";
 
   return (
-    <div className={clsx(
-      "relative bg-surface-2 border rounded-2xl p-5 space-y-4 shadow-card overflow-hidden transition-all duration-200",
-      running && !hb.stale ? "border-success/20 hover:shadow-glow-success" : "border-border hover:border-border"
-    )}>
+    <div className="relative glass-panel glass-panel-hover p-5 space-y-4 overflow-hidden">
 
       {/* Subtle gradient background */}
       <div className={clsx(
@@ -60,7 +57,7 @@ export default function BotCard({ bot }: { bot: BotStatus }) {
             )} />
           </div>
           <div>
-            <p className="font-semibold text-white capitalize text-sm">{bot.bot_name} Bot</p>
+            <p className="font-bold text-white uppercase tracking-wide text-xs">{bot.bot_name} Bot</p>
             <p className={clsx("text-xs", hb.stale ? "text-warning" : "text-muted")}>
               {hb.label}
             </p>
@@ -81,7 +78,7 @@ export default function BotCard({ bot }: { bot: BotStatus }) {
           { label: "Open",       value: String(bot.open_positions) },
           { label: "Heartbeat",  value: hb.label },
         ].map(s => (
-          <div key={s.label} className="bg-background/60 rounded-xl p-2.5 text-center">
+          <div key={s.label} className="glass-tile rounded-xl p-2.5 text-center">
             <p className="text-xs text-muted">{s.label}</p>
             <p className="text-sm font-semibold text-white mt-0.5 tabnum">{s.value}</p>
           </div>

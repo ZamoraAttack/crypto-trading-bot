@@ -17,8 +17,8 @@ export default function SystemHealth({ status }: { status: ControlStatus }) {
   ];
 
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-5 space-y-3 shadow-card">
-      <h3 className="text-sm font-semibold text-white">System Health</h3>
+    <div className="glass-panel p-5 space-y-3">
+      <h3 className="text-xs font-bold text-white uppercase tracking-wide">System Health</h3>
       <div className="space-y-1.5">
         {items.map(item => (
           <div key={item.label} className="flex items-center gap-3 py-1.5 border-b border-white/[0.04] last:border-0">

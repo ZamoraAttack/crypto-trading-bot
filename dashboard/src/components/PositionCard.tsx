@@ -5,10 +5,7 @@ export default function PositionCard({ trade }: { trade: Trade }) {
   const live = trade.mode === "live";
 
   return (
-    <div className={clsx(
-      "relative bg-surface-2 border rounded-2xl p-5 space-y-4 shadow-card overflow-hidden",
-      live ? "border-danger/25 hover:shadow-glow-danger" : "border-accent/20 hover:shadow-glow"
-    )}>
+    <div className="relative glass-panel glass-panel-hover p-5 space-y-4 overflow-hidden">
 
       {/* Gradient shimmer */}
       <div className={clsx(
@@ -65,7 +62,7 @@ export default function PositionCard({ trade }: { trade: Trade }) {
 
 function DataCell({ label, value, color = "text-white" }: { label: string; value: string; color?: string }) {
   return (
-    <div className="bg-background/50 rounded-xl px-3 py-2">
+    <div className="glass-tile rounded-xl px-3 py-2">
       <p className="text-xs text-muted">{label}</p>
       <p className={clsx("text-sm font-semibold mt-0.5 tabnum", color)}>{value}</p>
     </div>

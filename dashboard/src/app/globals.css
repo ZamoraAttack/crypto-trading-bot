@@ -46,6 +46,157 @@ body {
   -webkit-backdrop-filter: blur(16px);
 }
 
+/* Glass panel material system v3 — "engineered ice under stadium lighting" direction. Builds on
+   v2's bevelled-edge/frosted-grain/soft-reflection base and adds the two things that make a
+   surface read as glossy, imperfect, physical ice rather than flat digital glass: (1) anisotropic
+   micro-scratches (see ::before) and (2) a slow, continuous sheen sweep (see ::after) so
+   reflections visibly shift as if catching light, without needing mouse/hover tracking on
+   read-only status cards. Border leans cool/silvery rather than pure white for the "minimal
+   chrome" cue. Still no glow on the panels themselves — restrained, per brief. */
+.glass-panel {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 45%),
+    rgba(24, 28, 40, 0.68);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(226,232,240,0.11);
+  border-top-color: rgba(236,242,248,0.20);
+  border-radius: 20px;
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.35),
+    inset 1px 0 0 rgba(255,255,255,0.03),
+    inset -1px 0 0 rgba(0,0,0,0.15);
+}
+
+/* Frosted grain (unchanged from v2, symmetric baseFrequency) plus a second SVG turbulence layer
+   with an asymmetric baseFrequency ("0.008 0.9" — nearly flat on one axis, busy on the other),
+   which is what stretches noise into long, faint directional streaks instead of a blotchy
+   texture — real anisotropic micro-scratches, not random grain. Rotated 11deg so the streaks
+   don't align with the card's own edges (dead giveaway of a repeating texture tile). Both are
+   single rasterized image decodes, no per-frame cost. */
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008 0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)' transform='rotate(11 100 100)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 260px 260px, 140px 140px;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* Soft, large, off-center internal reflection (unchanged from v2) plus a slow sheen band that
+   drifts diagonally across the panel on a continuous ~12s loop — deliberately slow and dim so it
+   reads as ambient light catching engineered glass, never as a loading/skeleton shimmer. This is
+   the concrete answer to "reflections that only appear as light moves": here, light is always
+   slowly moving. */
+.glass-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.05) 45%, transparent 60%),
+    radial-gradient(120% 90% at 18% -10%, rgba(255,255,255,0.06), rgba(255,255,255,0) 55%);
+  background-size: 260% 260%, 100% 100%;
+  background-position: -40% -10%, 0 0;
+  animation: glass-sheen 12s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes glass-sheen {
+  0%, 100% { background-position: -40% -10%, 0 0; }
+  50%      { background-position: 140% 110%, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-panel::after { animation: none; }
+}
+
+/* Opt-in hover lift — only for cards meant to feel like interactive/scannable modules, not
+   read-only status displays. Transform + shadow/border only, GPU-friendly, no layout thrash. */
+.glass-panel-hover {
+  transition: transform 220ms ease-out, box-shadow 220ms ease-out, border-color 220ms ease-out;
+}
+.glass-panel-hover:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 18px 48px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.35),
+    inset 1px 0 0 rgba(255,255,255,0.04),
+    inset -1px 0 0 rgba(0,0,0,0.15);
+  border-color: rgba(236,242,248,0.16);
+}
+
+/* Single cut-corner variant for wide/primary panels only, matching the exact asymmetric
+   chamfer visible on the reference's two wide panels (the four side cards use plain
+   .glass-panel). clip-path leaves the other three corners' border-radius untouched — its
+   vertices sit exactly on the box edge there, so nothing is clipped except the chamfered
+   corner. box-shadow doesn't follow a clip-path shape, so this variant uses drop-shadow
+   instead, applied via filter, which does. */
+.glass-panel-chamfer {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 28px 100%, 0 calc(100% - 28px));
+  /* keep the bevel insets (thickness cue survives the cut corner), drop only the outer
+     shadow — box-shadow doesn't follow a clip-path shape, but the bevel insets, being
+     painted inside the box, still render correctly */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.35),
+    inset 1px 0 0 rgba(255,255,255,0.03),
+    inset -1px 0 0 rgba(0,0,0,0.15);
+  filter: drop-shadow(0 12px 32px rgba(0,0,0,0.45));
+}
+
+/* Sidebar-only variant — a full-height strip flush against the viewport's top/bottom/left
+   edges, so only the content-facing (right) corners round; a full 20px radius on all four
+   corners would look broken pinned against the screen edge like this. */
+.glass-panel-edge {
+  border-radius: 0 20px 20px 0;
+}
+
+/* Command-rail material — a subtly distinct surface from the main environment's glass panels,
+   per feedback that the sidebar should feel like "a physical rail connected to ZAMO" rather than
+   sharing the exact same card material as content panels. Cooler/darker tint, plus a faint
+   top-to-bottom gradient (brighter near the header, settling darker toward the bottom) standing
+   in for a rail catching ambient light from the Core above it. Layered on top of .glass-panel's
+   own background (same element, both classes applied) via source order — this rule is later in
+   the stylesheet so it wins at equal specificity. */
+.command-rail {
+  background:
+    linear-gradient(180deg, rgba(59,91,219,0.05) 0%, rgba(255,255,255,0) 30%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0) 45%),
+    rgba(10, 12, 20, 0.72);
+}
+
+/* Edge refraction line — a real element (see Sidebar.tsx), not a pseudo-element, since the rail
+   already uses ::before/::after for .glass-panel's grain/scratches + sheen and a sidebar-only
+   ::after would silently replace those rather than layer with them. */
+.command-rail-edge {
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  right: -1px;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(191,219,254,0.35) 40%, rgba(191,219,254,0.35) 60%, transparent);
+  pointer-events: none;
+}
+
+/* Nested stat tile inside a glass panel — one consistent look instead of several ad hoc
+   backgrounds. Slightly stronger than before to hold contrast against the new, less
+   transparent .glass-panel base. */
+.glass-tile {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(226,232,240,0.09);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.2);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar        { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track  { background: #0e0e1a; }

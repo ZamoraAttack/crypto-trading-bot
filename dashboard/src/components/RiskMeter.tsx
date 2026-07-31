@@ -19,11 +19,11 @@ export default function RiskMeter({ risk }: { risk: RiskState }) {
     risk.fear_greed_value <= 75 ? "text-success" : "text-warning";
 
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-5 space-y-4 shadow-card">
+    <div className="glass-panel p-5 space-y-4">
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Daily Risk</h3>
+        <h3 className="text-xs font-bold text-white uppercase tracking-wide">Daily Risk</h3>
         {risk.trading_halted ? (
           <span className="text-xs bg-danger/15 text-danger border border-danger/20 rounded-full px-2.5 py-0.5 font-semibold">
             HALTED
@@ -66,7 +66,7 @@ export default function RiskMeter({ risk }: { risk: RiskState }) {
           { label: "Mode",    value: risk.trading_mode.toUpperCase(),
             highlight: risk.trading_mode === "live" },
         ].map(s => (
-          <div key={s.label} className="bg-background/60 rounded-xl p-2.5 text-center">
+          <div key={s.label} className="glass-tile rounded-xl p-2.5 text-center">
             <p className="text-xs text-muted">{s.label}</p>
             <p className={clsx(
               "text-sm font-semibold mt-0.5",
