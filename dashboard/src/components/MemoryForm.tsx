@@ -30,22 +30,24 @@ export default function MemoryForm() {
     }
   }
 
+  // Bare form fields only — the parent page (/memory) supplies the glass-panel card + header,
+  // matching the established pattern of card chrome living at the page level, not duplicated
+  // inside every form/component that gets embedded in one.
   return (
-    <form onSubmit={handleSubmit} className="bg-surface-2 border border-border rounded-2xl p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-white">Remember something</h3>
+    <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <select
           value={category}
           onChange={e => setCategory(e.target.value)}
-          className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-white md:col-span-1"
+          className="bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-white md:col-span-1 focus:outline-none focus:border-accent-2/50"
         >
-          {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+          {CATEGORIES.map(c => <option key={c} value={c} className="bg-black">{c.replace(/_/g, " ")}</option>)}
         </select>
         <input
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="Short title"
-          className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-white md:col-span-3"
+          className="bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 md:col-span-3 focus:outline-none focus:border-accent-2/50"
         />
       </div>
       <textarea
@@ -53,7 +55,7 @@ export default function MemoryForm() {
         onChange={e => setContent(e.target.value)}
         placeholder="What should ZAMO remember?"
         rows={3}
-        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-white resize-none"
+        className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-accent-2/50"
       />
       <button
         type="submit"
