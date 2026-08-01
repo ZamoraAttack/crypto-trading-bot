@@ -26,7 +26,10 @@ npm-debug.log*
 
 # Runtime data / logs
 data/
-logs/
+# anchored to repo root (leading slash) — the unanchored "logs/" matched ANY directory named
+# "logs" anywhere in the tree, which silently caught dashboard/src/app/logs/ (a real Next.js
+# route, not runtime log output) and kept its page.tsx untracked/unbacked-up since 7/17.
+/logs/
 *.db
 *.sqlite
 *.sqlite3
