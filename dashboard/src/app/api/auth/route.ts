@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const CORRECT_PIN = "1234";
+const CORRECT_PIN = "1748";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
