@@ -15,9 +15,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
-from api import control, memory, pg, polymarket, positions, risk, signals, trades
+from api import approvals, control, departments, knowledge, memory, missions, pg, polymarket, positions, risk, signals, trades
 from config import cfg
 from database import init_db
+from intelligence.mission_engine import reconcile_interrupted_missions
+from intelligence.seed import seed_departments
+
+# Pre-existing gap, fixed here: this file never configured the root logger,
+# so every log.info()/log.debug() call was silently swallowed (only
+# log.warning()+ ever printed, via Python's default "lastResort" handler) —
+# invisible even though the code ran correctly. Real diagnostic visibility
+# depends on this.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +95,10 @@ app.include_router(control.router)
 app.include_router(polymarket.router)
 app.include_router(pg.router)
 app.include_router(memory.router)
+app.include_router(departments.router)
+app.include_router(missions.router)
+app.include_router(approvals.router)
+app.include_router(knowledge.router)
 
 
 # ── WebSocket broadcast ───────────────────────────────────────────────────────
@@ -133,6 +149,9 @@ async def broadcast(event_type: str, data: dict) -> None:
 async def on_startup():
     await init_db()
     log.info("Database initialized")
+    await seed_departments()
+    reconciled = await reconcile_interrupted_missions()
+    log.info("ZAMO Executive OS ready (departments seeded, %d mission(s) reconciled)", reconciled)
     log.info("Trading mode: %s", cfg.trading_mode.upper())
     if not cfg.social_scoring_enabled:
         log.warning("LunarCrush key not set — social scoring disabled (neutral 0.5 used)")

@@ -61,7 +61,7 @@ export const api = {
       fetcher<PgRevenue>(`/pg/revenue?months=${months}`),
   },
 
-  // ── Memory Layer ─────────────────────────────────────────────────────────
+  // ── Memory Layer (legacy — compatibility layer, unchanged) ────────────────
   memory: {
     list: (opts: { category?: string; q?: string; limit?: number } = {}) => {
       const params = new URLSearchParams();
@@ -73,6 +73,37 @@ export const api = {
     },
     create: (body: { category: string; title: string; content: string; metadata?: Record<string, unknown>; source?: string }) =>
       poster<Memory>("/memory", body),
+  },
+
+  // ── ZAMO Executive Operating System (Mission Control Loop / Ch5-7) ───────
+  zamo: {
+    departments: () => fetcher<ZamoDepartment[]>("/zamo/departments"),
+    missions: {
+      list: (department?: string) =>
+        fetcher<ZamoMission[]>(`/zamo/missions${department ? `?department=${department}` : ""}`),
+      get: (id: string) => fetcher<ZamoMissionDetail>(`/zamo/missions/${id}`),
+      create: (body: {
+        title: string; objective: string; department_slug: string;
+        success_criteria?: string; evidence_justification?: string;
+        constraints?: Record<string, unknown>; authority_granted?: string; created_by?: string;
+      }) => poster<{ id: string; state: string }>("/zamo/missions", body),
+    },
+    approvals: {
+      list: (status?: string) => fetcher<ZamoApproval[]>(`/zamo/approvals${status ? `?status=${status}` : ""}`),
+      decide: (id: number, body: { decision: string; decided_by?: string; decision_note?: string }) =>
+        poster<ZamoApproval>(`/zamo/approvals/${id}/decide`, body),
+    },
+    knowledge: {
+      search: (opts: { category?: string; tag?: string; q?: string; limit?: number } = {}) => {
+        const params = new URLSearchParams();
+        if (opts.category) params.set("category", opts.category);
+        if (opts.tag) params.set("tag", opts.tag);
+        if (opts.q) params.set("q", opts.q);
+        if (opts.limit) params.set("limit", String(opts.limit));
+        const qs = params.toString();
+        return fetcher<ZamoKnowledgeObject[]>(`/zamo/knowledge${qs ? `?${qs}` : ""}`);
+      },
+    },
   },
 };
 
@@ -308,4 +339,116 @@ export interface PmEquityCurve {
   points: { t: string; value: number }[];
   max_drawdown_usd: number;
   max_drawdown_pct: number;
+}
+
+// ── ZAMO Executive Operating System ──────────────────────────────────────
+
+export interface ZamoDepartment {
+  slug: string;
+  name: string;
+  status: string; // "active" | "planned"
+  active_mission_count: number;
+  last_activity_at: string | null;
+}
+
+export interface ZamoMission {
+  id: string;
+  title: string;
+  objective: string;
+  department_slug: string;
+  success_criteria: string | null;
+  evidence_justification: string | null;
+  constraints: Record<string, unknown> | null;
+  authority_granted: string; // "read" | "draft" | "execute"
+  state: string; // Ch5 Mission Health
+  priority: Record<string, unknown> | null;
+  priority_score: number | null;
+  created_by: string;
+  last_heartbeat_at: string | null;
+  attempt_count: number;
+  blocked_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZamoObservation {
+  id: number;
+  mission_id: string;
+  source_type: string;
+  source_reference: string | null;
+  retrieved_at: string;
+  extracted_evidence: string;
+  sensitivity_classification: string | null;
+  relevance: number | null;
+  impact: number | null;
+  urgency: number | null;
+  novelty: number | null;
+  persistence: number | null;
+  created_at: string;
+}
+
+export interface ZamoRecommendation {
+  id: number;
+  mission_id: string;
+  summary: string;
+  reasoning: string;
+  action_recommended: string;
+  evidence: { observation_id: number | null; note: string | null }[] | null;
+  confidence: number | null;
+  alternatives_considered: string[] | null;
+  assumptions: string[] | null;
+  uncertainty: string | null;
+  requires_approval: boolean;
+  created_at: string;
+}
+
+export interface ZamoApproval {
+  id: number;
+  recommendation_id: number;
+  mission_id: string;
+  status: string; // pending|approved|rejected|expired|cancelled|superseded|executed|failed
+  requested_action: string;
+  risk: string | null;
+  reversibility: string | null;
+  required_authority: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
+export interface ZamoOutcome {
+  id: number;
+  mission_id: string;
+  what_happened: string;
+  what_changed: string | null;
+  assumptions_held: unknown;
+  assumptions_failed: unknown;
+  lessons: string | null;
+  measured_results: unknown;
+  created_at: string;
+}
+
+export interface ZamoMissionDetail {
+  mission: ZamoMission;
+  observations: ZamoObservation[];
+  recommendations: ZamoRecommendation[];
+  approvals: ZamoApproval[];
+  outcome: ZamoOutcome | null;
+}
+
+export interface ZamoKnowledgeObject {
+  id: number;
+  category: string; // Ch4 taxonomy
+  tags: string[] | null;
+  title: string;
+  content: string;
+  source: string | null;
+  mission_id: string | null;
+  evidence: unknown;
+  confidence: number | null;
+  validation_history: unknown;
+  lifecycle_state: string;
+  created_at: string;
+  updated_at: string;
 }

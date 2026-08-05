@@ -4,6 +4,7 @@ Serves both bots' data to the unified dashboard.
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from typing import Any
@@ -16,13 +17,34 @@ router = APIRouter(prefix="/api/pg", tags=["postgres"])
 _pool: asyncpg.Pool | None = None
 
 
+def _encode_json(value: Any) -> str:
+    # Pass already-serialized strings through unchanged (e.g. memory.py's
+    # `json.dumps(metadata) if metadata else None`) — only encode raw Python
+    # objects. Avoids double-encoding existing call sites that pre-dump.
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Auto-decode json/jsonb columns into native Python objects on every
+    connection in the pool. Without this, asyncpg returns jsonb columns as
+    raw JSON text rather than parsed lists/dicts — which arrives at the
+    frontend as a string instead of an array (e.g. ZamoRecommendation.evidence
+    breaking .map() calls) rather than the real JSON the API response
+    promises."""
+    for typename in ("json", "jsonb"):
+        await conn.set_type_codec(
+            typename, encoder=_encode_json, decoder=json.loads,
+            schema="pg_catalog", format="text",
+        )
+
+
 async def get_pool() -> asyncpg.Pool | None:
     global _pool
     if _pool is None:
         url = os.getenv("POSTGRES_URL", "")
         if url:
             try:
-                _pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
+                _pool = await asyncpg.create_pool(url, min_size=1, max_size=5, init=_init_connection)
             except Exception as exc:
                 return None
     return _pool

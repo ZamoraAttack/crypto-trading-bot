@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Home, Brain, Plug, Diamond, Wallet, TrendingUp, FileText, ChevronLeft, ChevronRight, LogOut, Menu, X } from "lucide-react";
+import { Home, Brain, Plug, Diamond, Wallet, TrendingUp, FileText, ChevronLeft, ChevronRight, LogOut, Menu, X, Building2, Rocket, ClipboardCheck } from "lucide-react";
 import XrpIcon from "@/components/jarvis/XrpIcon";
 
 // One consistent icon system (Lucide) throughout — the emoji set (🏠🧠🔌💰📈📋 etc.) read as a
@@ -18,9 +18,12 @@ const ICON_PROPS = { strokeWidth: 1.75 } as const;
 // reference's own grouping (nav list, then a divider, then a distinct secondary group), not its
 // literal icons/labels.
 const SYSTEM_LINKS: { href: string; label: string; icon: ReactNode }[] = [
-  { href: "/",           label: "ZAMO",       icon: <Home {...ICON_PROPS} /> },
-  { href: "/memory",     label: "Memory",     icon: <Brain {...ICON_PROPS} /> },
-  { href: "/connectors", label: "Connectors", icon: <Plug {...ICON_PROPS} /> },
+  { href: "/",           label: "ZAMO",        icon: <Home {...ICON_PROPS} /> },
+  { href: "/memory",     label: "Memory",      icon: <Brain {...ICON_PROPS} /> },
+  { href: "/departments", label: "Departments", icon: <Building2 {...ICON_PROPS} /> },
+  { href: "/missions",   label: "Missions",    icon: <Rocket {...ICON_PROPS} /> },
+  { href: "/approvals",  label: "Approvals",   icon: <ClipboardCheck {...ICON_PROPS} /> },
+  { href: "/connectors", label: "Connectors",  icon: <Plug {...ICON_PROPS} /> },
 ];
 const BOT_LINKS: { href: string; label: string; icon: ReactNode }[] = [
   { href: "/crypto",     label: "Crypto Bot", icon: <XrpIcon className="w-[18px] h-[18px]" /> },

@@ -107,6 +107,58 @@ const tools = [
     run: async ({ category, query }) => JSON.stringify(await api.memory.list({ category, q: query })),
   }),
   betaTool({
+    name: "draft_mission",
+    description: "Draft a proposed mission for founder review — this does NOT persist anything. Always call this first whenever the conversation suggests deliberate, meaningful work for a department (research, analysis, investigation) — never call create_mission directly on a first ask. Present the returned draft to Alan in plain language and wait for his explicit confirmation before ever calling create_mission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short mission title." },
+        objective: { type: "string", description: "What this mission should accomplish, and why." },
+        department_slug: { type: "string", description: 'The department that should own this mission, e.g. "research". Only active departments can be assigned.' },
+        success_criteria: { type: "string", description: "What success looks like for this mission." },
+      },
+      required: ["title", "objective", "department_slug"],
+      additionalProperties: false,
+    },
+    run: async ({ title, objective, department_slug, success_criteria }) => {
+      const departments = await api.zamo.departments();
+      const dept = departments.find(d => d.slug === department_slug);
+      if (!dept) {
+        return JSON.stringify({
+          error: `Unknown department "${department_slug}". Active departments: ${departments.filter(d => d.status === "active").map(d => d.slug).join(", ") || "none"}.`,
+        });
+      }
+      if (dept.status !== "active") {
+        return JSON.stringify({ error: `${dept.name} is not active yet — only Research is implemented so far.` });
+      }
+      return JSON.stringify({
+        draft: { title, objective, department_slug, department_name: dept.name, success_criteria },
+        note: "This is a draft only, nothing was persisted. Present it to Alan and wait for his explicit confirmation before calling create_mission.",
+      });
+    },
+  }),
+  betaTool({
+    name: "create_mission",
+    description: "Persist a mission and kick off the Mission Control Loop (Research Department only, for now). Only call this AFTER the founder has explicitly confirmed a draft you presented via draft_mission earlier in this same conversation — never on the first ask, and never from casual discussion alone.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        objective: { type: "string" },
+        department_slug: { type: "string" },
+        success_criteria: { type: "string" },
+      },
+      required: ["title", "objective", "department_slug"],
+      additionalProperties: false,
+    },
+    run: async ({ title, objective, department_slug, success_criteria }) => {
+      const mission = await api.zamo.missions.create({
+        title, objective, department_slug, success_criteria, created_by: "founder",
+      });
+      return JSON.stringify(mission);
+    },
+  }),
+  betaTool({
     name: "search_emails",
     description: "Search Alan's tech/AI-ops Gmail inbox (zamoraattack@gmail.com) — the account tied to his VPS, Hostinger, and Anthropic Console billing. Use this for anything email-related: billing issues, VPS notices, service alerts. Only searches the Primary category, so results are never promotions/spam/social.",
     inputSchema: {
@@ -161,7 +213,9 @@ You also have persistent memory (remember/recall). Use it two ways:
 - Proactively call "remember" when the conversation produces a durable decision, goal, fact, or outcome worth keeping — don't wait to be asked.
 - Call "recall" before answering anything that depends on past context (e.g. "what did we decide about X") rather than answering from the current conversation alone.
 
-You have a web_search tool for anything outside your training data or Alan's own systems — current events, market/competitor research, prices, or general lookups. Use it rather than guessing or answering from stale knowledge.`;
+You have a web_search tool for anything outside your training data or Alan's own systems — current events, market/competitor research, prices, or general lookups. Use it rather than guessing or answering from stale knowledge.
+
+You can also assign work to ZAMO's Executive Departments via missions. Never create a mission from casual discussion — if the conversation suggests meaningful, deliberate work (a research task, an investigation), call "draft_mission" first, present the draft in plain language, and only call "create_mission" after Alan explicitly confirms it. Mission creation represents deliberate organizational intent, not exploratory conversation.`;
 
 const SURFACE_SUFFIX: Record<"voice" | "text", string> = {
   voice: `
