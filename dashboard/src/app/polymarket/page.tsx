@@ -117,7 +117,7 @@ export default async function PolymarketPage() {
         {recentTrades.length > 0 && (
           <section>
             <h3 className="text-sm font-semibold text-[#E6EDF3] mb-3">
-              Recent Activity ({pmStats?.total_trades ?? recentTrades.length} total, {pmStats?.trades_24h ?? 0} in last 24h)
+              Recent Activity ({pmStats?.total_activity ?? recentTrades.length} total, {pmStats?.trades_24h ?? 0} in last 24h)
             </h3>
             <ActivityTable trades={recentTrades} />
           </section>

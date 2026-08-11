@@ -312,6 +312,7 @@ export interface PmStats {
   total_pnl:      number;
   win_rate:       number;
   total_trades:   number;
+  total_activity: number;
   winners:        number;
   losers:         number;
   trades_24h:     number;

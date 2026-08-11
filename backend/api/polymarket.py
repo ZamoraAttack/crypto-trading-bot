@@ -93,7 +93,7 @@ async def polymarket_logs(lines: int = 100):
 
 
 _EMPTY_STATS = {
-    "total_pnl": 0.0, "win_rate": 0.0, "total_trades": 0,
+    "total_pnl": 0.0, "win_rate": 0.0, "total_trades": 0, "total_activity": 0,
     "winners": 0, "losers": 0, "trades_24h": 0,
     "last_trade": None, "recent_trades": [],
 }
@@ -128,13 +128,22 @@ async def polymarket_stats():
         return _EMPTY_STATS
 
     async with pool.acquire() as conn:
+        # total_trades counts only rows with a real settled pnl_usd (one per
+        # resolved position) — status='closed' alone also matches buy-fill
+        # rows that close_open_buys() flips to 'closed' once their position
+        # resolves, which have pnl_usd=NULL and previously inflated this
+        # count 3x, deflating win_rate by the same factor. total_activity
+        # keeps the old COUNT(*) semantics for callers that want a raw
+        # closed-row/event count (e.g. the dashboard's "Recent Activity"
+        # label), not a trade-count for win-rate math.
         summary = await conn.fetchrow(
             """
             SELECT
-                COUNT(*)                              AS total_trades,
-                COUNT(*) FILTER (WHERE pnl_usd > 0)   AS winners,
-                COUNT(*) FILTER (WHERE pnl_usd <= 0)  AS losers,
-                COALESCE(SUM(pnl_usd), 0)             AS total_pnl
+                COUNT(*) FILTER (WHERE pnl_usd IS NOT NULL) AS total_trades,
+                COUNT(*)                                    AS total_activity,
+                COUNT(*) FILTER (WHERE pnl_usd > 0)         AS winners,
+                COUNT(*) FILTER (WHERE pnl_usd <= 0)        AS losers,
+                COALESCE(SUM(pnl_usd), 0)                   AS total_pnl
             FROM trades
             WHERE bot_name = 'polymarket' AND status = 'closed'
             """
@@ -152,15 +161,17 @@ async def polymarket_stats():
             """
         )
 
-    total   = summary["total_trades"] or 0
-    winners = summary["winners"] or 0
-    losers  = summary["losers"] or 0
+    total     = summary["total_trades"] or 0
+    activity  = summary["total_activity"] or 0
+    winners   = summary["winners"] or 0
+    losers    = summary["losers"] or 0
     recent_trades = [_pg_trade_to_pm(dict(r)) for r in recent_rows]
 
     return {
         "total_pnl":      round(float(summary["total_pnl"] or 0), 4),
         "win_rate":       round((winners / total * 100) if total else 0, 1),
         "total_trades":   total,
+        "total_activity": activity,
         "winners":        winners,
         "losers":         losers,
         "trades_24h":     trades_24h or 0,
