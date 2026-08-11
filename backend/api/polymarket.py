@@ -7,10 +7,12 @@ pre-aggregated and indexed).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -23,6 +25,17 @@ router = APIRouter(prefix="/api/polymarket", tags=["polymarket"])
 
 _DATA_DIR = Path(cfg.polymarket_data_dir) if cfg.polymarket_data_dir else None
 _BULLPEN  = Path.home() / ".bullpen/bin/bullpen"
+
+# The `bullpen polymarket positions` CLI call takes 2-20s (it hits
+# Polymarket's own backend, not ours) and was previously run fresh on every
+# page load, directly inside the async endpoint -- blocking this process's
+# single uvicorn worker for the full duration on top of the per-request
+# latency. Cached for a short window so repeat navigations reuse the last
+# result instead of re-paying that cost, and run in a thread so a slow call
+# doesn't stall every other concurrent request to this backend.
+_POSITIONS_CACHE_TTL = 20  # seconds -- within the 15-30s window requested
+_positions_cache: dict = {"data": None, "ts": 0.0}
+_positions_lock = asyncio.Lock()
 
 
 def _read_json(filename: str) -> dict | list:
@@ -43,27 +56,50 @@ async def polymarket_positions():
     return _read_json("positions.json")
 
 
+def _run_bullpen_positions() -> list:
+    """Blocking; must only be called via asyncio.to_thread()."""
+    result = subprocess.run(
+        [str(_BULLPEN), "polymarket", "positions", "--output", "json", "--non-interactive"],
+        capture_output=True, text=True, timeout=20,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip())
+    data = json.loads(result.stdout)
+    return data if isinstance(data, list) else data.get("positions", [])
+
+
 @router.get("/positions/live")
 async def polymarket_positions_live():
     """Live wallet snapshot from the Polymarket CLOB — current odds, current
     value and unrealized P&L per open position. positions.json only has the
     entry-side data (cost basis, shares), so this is the only source for
-    "what is this worth right now"."""
+    "what is this worth right now". Cached for _POSITIONS_CACHE_TTL seconds
+    (see comment above the cache declaration)."""
     if not _BULLPEN.exists():
         return []
-    try:
-        result = subprocess.run(
-            [str(_BULLPEN), "polymarket", "positions", "--output", "json", "--non-interactive"],
-            capture_output=True, text=True, timeout=20,
-        )
-        if result.returncode != 0:
-            log.warning("bullpen positions failed: %s", result.stderr.strip())
-            return []
-        data = json.loads(result.stdout)
-        return data if isinstance(data, list) else data.get("positions", [])
-    except Exception as exc:
-        log.error("Failed to fetch live positions: %s", exc)
-        return []
+
+    now = time.monotonic()
+    if _positions_cache["data"] is not None and now - _positions_cache["ts"] < _POSITIONS_CACHE_TTL:
+        return _positions_cache["data"]
+
+    async with _positions_lock:
+        # Re-check: another request may have refreshed the cache while we
+        # were waiting for the lock, in which case skip the CLI call entirely.
+        now = time.monotonic()
+        if _positions_cache["data"] is not None and now - _positions_cache["ts"] < _POSITIONS_CACHE_TTL:
+            return _positions_cache["data"]
+
+        try:
+            data = await asyncio.to_thread(_run_bullpen_positions)
+        except Exception as exc:
+            log.error("Failed to fetch live positions: %s", exc)
+            # Serve the last good snapshot rather than an empty list, which
+            # the dashboard would otherwise render as "No open positions".
+            return _positions_cache["data"] if _positions_cache["data"] is not None else []
+
+        _positions_cache["data"] = data
+        _positions_cache["ts"] = time.monotonic()
+        return data
 
 
 @router.get("/trades")
@@ -183,47 +219,69 @@ async def polymarket_stats():
 @router.get("/equity-curve")
 async def polymarket_equity_curve():
     """Account value over time + max drawdown, from the balances snapshot
-    history. Downsampled for charting; drawdown is computed on the full
-    series first so downsampling can't hide the real peak-to-trough."""
+    history. write_balance() inserts a row every bot cycle with no retention
+    cap (39k+ rows for this bot alone as of Aug 2026, growing forever) --
+    both the drawdown calculation and the chart's point sampling are done in
+    SQL via window functions so this endpoint's own memory/transfer cost
+    stays bounded (~250 rows) no matter how large the table grows, instead
+    of pulling the whole table into Python on every request. The drawdown
+    query still has to scan every row (unavoidable for a correct all-time
+    peak-to-trough), but that was already fast (~100ms server-side per
+    EXPLAIN ANALYZE against the pre-fix version) -- the fix is to stop
+    shipping the full result set across the wire and looping over it here."""
     pool = await get_pool()
     if not pool:
         return {"points": [], "max_drawdown_usd": 0.0, "max_drawdown_pct": 0.0}
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
+        # Pairs each row's dollar drawdown with *that same row's* percentage
+        # drawdown (not the independently-largest percentage, which can come
+        # from a different row) -- matches the original Python loop's
+        # `if dd_usd > max_dd_usd: max_dd_usd, max_dd_pct = dd_usd, dd_pct`.
+        drawdown = await conn.fetchrow(
             """
-            SELECT total_usd, recorded_at FROM balances
-            WHERE bot_name = 'polymarket'
+            WITH running AS (
+                SELECT total_usd,
+                       MAX(total_usd) OVER (ORDER BY recorded_at ASC) AS peak
+                FROM balances
+                WHERE bot_name = 'polymarket'
+            ),
+            dd AS (
+                SELECT
+                    (peak - total_usd) AS dd_usd,
+                    CASE WHEN peak > 0 THEN (peak - total_usd) / peak * 100 ELSE 0 END AS dd_pct
+                FROM running
+            )
+            SELECT dd_usd AS max_dd_usd, dd_pct AS max_dd_pct
+            FROM dd
+            ORDER BY dd_usd DESC
+            LIMIT 1
+            """
+        )
+        points = await conn.fetch(
+            """
+            WITH numbered AS (
+                SELECT total_usd, recorded_at,
+                       ROW_NUMBER() OVER (ORDER BY recorded_at ASC) AS rn,
+                       COUNT(*)    OVER ()                          AS n
+                FROM balances
+                WHERE bot_name = 'polymarket'
+            )
+            SELECT total_usd, recorded_at
+            FROM numbered
+            WHERE rn = 1 OR rn = n OR rn % GREATEST(1, n / 250) = 0
             ORDER BY recorded_at ASC
             """
         )
 
-    if not rows:
+    if not points:
         return {"points": [], "max_drawdown_usd": 0.0, "max_drawdown_pct": 0.0}
 
-    series = [(r["recorded_at"], float(r["total_usd"])) for r in rows]
-
-    peak       = series[0][1]
-    max_dd_usd = 0.0
-    max_dd_pct = 0.0
-    for _, val in series:
-        peak   = max(peak, val)
-        dd_usd = peak - val
-        dd_pct = (dd_usd / peak * 100) if peak else 0.0
-        if dd_usd > max_dd_usd:
-            max_dd_usd, max_dd_pct = dd_usd, dd_pct
-
-    max_points = 250
-    if len(series) > max_points:
-        step    = len(series) / max_points
-        sampled = [series[int(i * step)] for i in range(max_points)]
-        if sampled[-1] != series[-1]:
-            sampled.append(series[-1])
-    else:
-        sampled = series
-
     return {
-        "points": [{"t": ts.isoformat(), "value": round(val, 2)} for ts, val in sampled],
-        "max_drawdown_usd": round(max_dd_usd, 2),
-        "max_drawdown_pct": round(max_dd_pct, 2),
+        "points": [
+            {"t": r["recorded_at"].isoformat(), "value": round(float(r["total_usd"]), 2)}
+            for r in points
+        ],
+        "max_drawdown_usd": round(float(drawdown["max_dd_usd"]), 2) if drawdown else 0.0,
+        "max_drawdown_pct": round(float(drawdown["max_dd_pct"]), 2) if drawdown else 0.0,
     }

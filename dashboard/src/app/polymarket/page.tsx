@@ -6,14 +6,23 @@ import clsx from "clsx";
 export const revalidate = 30;
 
 export default async function PolymarketPage() {
+  // revalidate: 30 matches this route's own `export const revalidate = 30`
+  // above. Without it on every fetch here, a single no-store call is enough
+  // to force the whole route dynamic and defeat that setting — every
+  // navigation would re-run this full 7-way fetch from scratch, including
+  // the ~3s bullpen CLI round trip on a cold cache (see api/polymarket.py's
+  // positions/live cache). These endpoints are opt-in per call (see
+  // FetchOpts in api.ts) specifically so this doesn't change freshness for
+  // any other page that shares the same underlying wrapper functions.
+  const cache30 = { revalidate: 30 };
   const [bots, pgTrades, pmStats, livePositions, balances, equity, logs] = await Promise.all([
-    api.pg.bots().catch(() => []),
-    api.pg.trades("polymarket").catch(() => [] as PgTrade[]),
-    api.polymarketStats().catch(() => null as PmStats | null),
-    api.polymarketPositionsLive().catch(() => [] as PmPositionLive[]),
-    api.pg.balances("polymarket").catch(() => []),
-    api.polymarketEquityCurve().catch(() => null as PmEquityCurve | null),
-    api.polymarketLogs(50).catch(() => ({ lines: [] as string[] })),
+    api.pg.bots(cache30).catch(() => []),
+    api.pg.trades("polymarket", undefined, cache30).catch(() => [] as PgTrade[]),
+    api.polymarketStats(cache30).catch(() => null as PmStats | null),
+    api.polymarketPositionsLive(cache30).catch(() => [] as PmPositionLive[]),
+    api.pg.balances("polymarket", cache30).catch(() => []),
+    api.polymarketEquityCurve(cache30).catch(() => null as PmEquityCurve | null),
+    api.polymarketLogs(50, cache30).catch(() => ({ lines: [] as string[] })),
   ]);
 
   const bot     = bots.find(b => b.bot_name === "polymarket");

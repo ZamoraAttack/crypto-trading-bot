@@ -1,10 +1,23 @@
 const API_BASE = "/api/backend";
 const BACKEND_DIRECT = "http://127.0.0.1:8000/api";
 
-async function fetcher<T>(path: string): Promise<T> {
+export interface FetchOpts {
+  // Opt-in only. Omitted (the default everywhere except polymarket/page.tsx)
+  // preserves the original no-store/always-fresh behavior byte-for-byte —
+  // several of these endpoints are shared with other pages (home, /crypto,
+  // /trades) and the assistant chat route, which should not silently start
+  // serving stale data as a side effect of a Polymarket-page-only fix.
+  revalidate?: number;
+}
+
+async function fetcher<T>(path: string, opts?: FetchOpts): Promise<T> {
   // Server components can't resolve relative URLs — go direct to FastAPI
   const base = typeof window === "undefined" ? BACKEND_DIRECT : API_BASE;
-  const res = await fetch(`${base}${path}`, { cache: "no-store" });
+  const fetchInit: RequestInit =
+    opts?.revalidate !== undefined
+      ? { next: { revalidate: opts.revalidate } }
+      : { cache: "no-store" };
+  const res = await fetch(`${base}${path}`, fetchInit);
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -32,11 +45,11 @@ export const api = {
   controlStatus:      () => fetcher<ControlStatus>("/control/status"),
   polymarketState:    () => fetcher<unknown>("/polymarket/state"),
   polymarketPositions:() => fetcher<PmPosition[]>("/polymarket/positions"),
-  polymarketPositionsLive: () => fetcher<PmPositionLive[]>("/polymarket/positions/live"),
+  polymarketPositionsLive: (opts?: FetchOpts) => fetcher<PmPositionLive[]>("/polymarket/positions/live", opts),
   polymarketTrades:   () => fetcher<PmTrade[]>("/polymarket/trades"),
-  polymarketStats:    () => fetcher<PmStats>("/polymarket/stats"),
-  polymarketEquityCurve: () => fetcher<PmEquityCurve>("/polymarket/equity-curve"),
-  polymarketLogs:     (lines = 50) => fetcher<{ lines: string[] }>(`/polymarket/logs?lines=${lines}`),
+  polymarketStats:    (opts?: FetchOpts) => fetcher<PmStats>("/polymarket/stats", opts),
+  polymarketEquityCurve: (opts?: FetchOpts) => fetcher<PmEquityCurve>("/polymarket/equity-curve", opts),
+  polymarketLogs:     (lines = 50, opts?: FetchOpts) => fetcher<{ lines: string[] }>(`/polymarket/logs?lines=${lines}`, opts),
 
   emergencyStop: () =>
     fetch(`${API_BASE}/control/emergency-stop`, { method: "POST" }).then(r => r.json()),
@@ -46,17 +59,17 @@ export const api = {
 
   // ── Postgres unified endpoints ──────────────────────────────────────────
   pg: {
-    bots:     ()                             => fetcher<PgBotStatus[]>("/pg/bots"),
-    trades:   (bot?: string, status?: string) =>
-      fetcher<PgTrade[]>(`/pg/trades?limit=100${bot ? `&bot=${bot}` : ""}${status ? `&status=${status}` : ""}`),
+    bots:     (opts?: FetchOpts)                             => fetcher<PgBotStatus[]>("/pg/bots", opts),
+    trades:   (bot?: string, status?: string, opts?: FetchOpts) =>
+      fetcher<PgTrade[]>(`/pg/trades?limit=100${bot ? `&bot=${bot}` : ""}${status ? `&status=${status}` : ""}`, opts),
     summary:  (bot?: string)                 =>
       fetcher<PgSummary>(`/pg/trades/summary${bot ? `?bot=${bot}` : ""}`),
     signals:  (bot?: string)                 =>
       fetcher<PgSignal[]>(`/pg/signals?limit=50${bot ? `&bot=${bot}` : ""}`),
     logs:     (bot?: string, level?: string) =>
       fetcher<PgLog[]>(`/pg/logs?limit=100${bot ? `&bot=${bot}` : ""}${level ? `&level=${level}` : ""}`),
-    balances: (bot?: string)                 =>
-      fetcher<PgBalance[]>(`/pg/balances${bot ? `?bot=${bot}` : ""}`),
+    balances: (bot?: string, opts?: FetchOpts)                 =>
+      fetcher<PgBalance[]>(`/pg/balances${bot ? `?bot=${bot}` : ""}`, opts),
     revenue:  (months = 6)                   =>
       fetcher<PgRevenue>(`/pg/revenue?months=${months}`),
   },
