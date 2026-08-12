@@ -50,6 +50,10 @@ export const api = {
   polymarketStats:    (opts?: FetchOpts) => fetcher<PmStats>("/polymarket/stats", opts),
   polymarketEquityCurve: (opts?: FetchOpts) => fetcher<PmEquityCurve>("/polymarket/equity-curve", opts),
   polymarketLogs:     (lines = 50, opts?: FetchOpts) => fetcher<{ lines: string[] }>(`/polymarket/logs?lines=${lines}`, opts),
+  polymarketTradingIntelligence: (opts?: FetchOpts) =>
+    fetcher<PmTradingIntelligence | null>("/polymarket/trading-intelligence/latest", opts),
+  polymarketOutcomesRecent: (limit = 20, opts?: FetchOpts) =>
+    fetcher<PgTrade[]>(`/polymarket/outcomes/recent?limit=${limit}`, opts),
 
   emergencyStop: () =>
     fetch(`${API_BASE}/control/emergency-stop`, { method: "POST" }).then(r => r.json()),
@@ -353,6 +357,25 @@ export interface PmEquityCurve {
   points: { t: string; value: number }[];
   max_drawdown_usd: number;
   max_drawdown_pct: number;
+}
+
+// Latest Trading Intelligence digest for the Polymarket page's Intelligence
+// section. resolved_count/unique_intent_count are computed live against
+// current trades data (see api/polymarket.py), not frozen at digest time --
+// they grow as more of the followed wallet's positions resolve.
+export interface PmTradingIntelligence {
+  mission_id:          string;
+  title:                string;
+  state:                string;
+  updated_at:           string;
+  headline:             string | null;
+  summary:              string | null;
+  confidence:           number | null;
+  requires_approval:    boolean | null;
+  resolved_count:       number;
+  unique_intent_count:  number;
+  knowledge_count:      number;
+  wallet:               string | null;
 }
 
 // ── ZAMO Executive Operating System ──────────────────────────────────────

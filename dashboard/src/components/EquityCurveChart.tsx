@@ -4,10 +4,22 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 interface Point { t: string; value: number }
 
-export default function EquityCurveChart({ points }: { points: Point[] }) {
+// Recharts renders raw SVG attributes, not Tailwind classNames, so colors
+// here can't reference the design tokens directly -- these are the exact
+// same hex values as tailwind.config.ts (border/muted/accent) kept in sync
+// by hand, not an independent palette like this component used before.
+const TOKEN = {
+  border: "#1a1a2e",
+  muted:  "#6b7280",
+  text:   "#e2e8f0",   // matches globals.css body color
+  accent: "#6366f1",
+  surface2: "#13131f",
+};
+
+export default function EquityCurveChart({ points, height = 180 }: { points: Point[]; height?: number }) {
   if (points.length < 2) {
     return (
-      <div className="h-64 flex items-center justify-center text-[#6B7280] text-sm">
+      <div style={{ height }} className="flex items-center justify-center text-muted text-sm">
         Not enough history yet to chart.
       </div>
     );
@@ -19,42 +31,42 @@ export default function EquityCurveChart({ points }: { points: Point[] }) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#E6EDF3" stopOpacity={0.15} />
-            <stop offset="100%" stopColor="#E6EDF3" stopOpacity={0} />
+            <stop offset="0%" stopColor={TOKEN.accent} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={TOKEN.accent} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid stroke="#2A2F3A" strokeDasharray="3 3" vertical={false} />
+        <CartesianGrid stroke={TOKEN.border} strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="t"
           type="number"
           domain={["dataMin", "dataMax"]}
           tickFormatter={(t) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-          stroke="#6B7280"
-          tick={{ fill: "#6B7280", fontSize: 11 }}
+          stroke={TOKEN.muted}
+          tick={{ fill: TOKEN.muted, fontSize: 11 }}
           tickLine={false}
-          axisLine={{ stroke: "#2A2F3A" }}
+          axisLine={{ stroke: TOKEN.border }}
           minTickGap={40}
         />
         <YAxis
-          stroke="#6B7280"
-          tick={{ fill: "#6B7280", fontSize: 11 }}
+          stroke={TOKEN.muted}
+          tick={{ fill: TOKEN.muted, fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           tickFormatter={(v) => `$${v}`}
           width={56}
         />
         <Tooltip
-          contentStyle={{ background: "#161B22", border: "1px solid #2A2F3A", borderRadius: 8 }}
-          labelStyle={{ color: "#6B7280" }}
-          itemStyle={{ color: "#E6EDF3" }}
+          contentStyle={{ background: TOKEN.surface2, border: `1px solid ${TOKEN.border}`, borderRadius: 10 }}
+          labelStyle={{ color: TOKEN.muted }}
+          itemStyle={{ color: TOKEN.text }}
           formatter={(v: number) => [`$${v.toFixed(2)}`, "Balance"]}
           labelFormatter={(t) => new Date(t).toLocaleString()}
         />
-        <Area type="monotone" dataKey="value" stroke="#E6EDF3" strokeWidth={1.5} fill="url(#equityFill)" />
+        <Area type="monotone" dataKey="value" stroke={TOKEN.text} strokeWidth={1.5} fill="url(#equityFill)" />
       </AreaChart>
     </ResponsiveContainer>
   );
