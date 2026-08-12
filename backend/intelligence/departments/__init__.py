@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from intelligence.departments.base import Department
 from intelligence.departments.research import ResearchDepartment
+from intelligence.departments.trading_intelligence import TradingIntelligenceDepartment
 
 _REGISTRY: dict[str, Department] = {
     "research": ResearchDepartment(),
+    "trading_intelligence": TradingIntelligenceDepartment(),
 }
 
 

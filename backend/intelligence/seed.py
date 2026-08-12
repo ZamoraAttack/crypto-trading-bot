@@ -13,6 +13,7 @@ from database import AsyncSessionLocal, ZamoDepartment
 
 _ROSTER = [
     ("research", "Research Department", "active"),
+    ("trading_intelligence", "Trading Intelligence Department", "active"),
     ("marketing", "Marketing Department", "planned"),
     ("finance", "Finance Department", "planned"),
     ("operations", "Operations Department", "planned"),
