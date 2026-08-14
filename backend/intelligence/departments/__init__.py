@@ -1,17 +1,20 @@
 """
 Department registry — the slug -> Department lookup mission_engine uses.
-Only Research is implemented; the other six exist as `planned` ZamoDepartment
-rows (seeded via intelligence/seed.py) with no registry entry yet.
+Research, Trading Intelligence, and Customer Discovery are implemented; the
+remaining roster exists as `planned` ZamoDepartment rows (seeded via
+intelligence/seed.py) with no registry entry yet.
 """
 from __future__ import annotations
 
 from intelligence.departments.base import Department
+from intelligence.departments.customer_discovery import CustomerDiscoveryDepartment
 from intelligence.departments.research import ResearchDepartment
 from intelligence.departments.trading_intelligence import TradingIntelligenceDepartment
 
 _REGISTRY: dict[str, Department] = {
     "research": ResearchDepartment(),
     "trading_intelligence": TradingIntelligenceDepartment(),
+    "customer_discovery": CustomerDiscoveryDepartment(),
 }
 
 

@@ -139,7 +139,7 @@ const tools = [
   }),
   betaTool({
     name: "create_mission",
-    description: "Persist a mission and kick off the Mission Control Loop (Research Department only, for now). Only call this AFTER the founder has explicitly confirmed a draft you presented via draft_mission earlier in this same conversation — never on the first ask, and never from casual discussion alone.",
+    description: "Persist a mission and kick off the Mission Control Loop. Only call this AFTER the founder has explicitly confirmed a draft you presented via draft_mission earlier in this same conversation — never on the first ask, and never from casual discussion alone. Only active departments can be assigned — draft_mission already validated this.",
     inputSchema: {
       type: "object",
       properties: {
@@ -247,16 +247,33 @@ export async function POST(request: NextRequest) {
 
   const surface = body.surface === "text" ? "text" : "voice";
   const history = (body.history ?? []).slice(-10);
+  const messages = [...history, { role: "user" as const, content: body.message }];
 
-  const runner = client.beta.messages.toolRunner({
-    model: "claude-opus-4-8",
-    max_tokens: 1024,
-    system: BASE_SYSTEM_PROMPT + SURFACE_SUFFIX[surface],
-    tools,
-    messages: [...history, { role: "user", content: body.message }],
-  });
+  const runToolRunner = () =>
+    client.beta.messages
+      .toolRunner({
+        model: "claude-opus-4-8",
+        max_tokens: 1024,
+        system: BASE_SYSTEM_PROMPT + SURFACE_SUFFIX[surface],
+        tools,
+        messages,
+      })
+      .runUntilDone();
 
-  const finalMessage = await runner.runUntilDone();
+  let finalMessage;
+  try {
+    finalMessage = await runToolRunner();
+  } catch (err) {
+    // web_search's dynamic filtering can invoke code_execution as a hidden
+    // server tool; if that's left mid-flight the runner can't continue and
+    // the API 400s (e.g. "container_id is required..."). A single retry
+    // with a fresh runner (no carried-over broken state) recovers.
+    if (err instanceof Anthropic.APIError && err.status === 400) {
+      finalMessage = await runToolRunner();
+    } else {
+      throw err;
+    }
+  }
 
   const reply = finalMessage.content
     .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")

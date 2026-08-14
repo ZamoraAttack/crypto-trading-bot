@@ -10,10 +10,11 @@ without changing anything above run_mission()).
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from database import (
     AsyncSessionLocal,
@@ -36,6 +37,24 @@ VALID_STATES = {
     "waiting", "blocked", "review", "completed", "learning", "archived",
 }
 _HEARTBEAT_STALE_SECONDS = 300  # 5 min — a dead process stops heartbeating
+
+# Hard circuit breaker on shared Anthropic spend (2026-08-14) — a single
+# effort=high mission with real web search has been observed costing ~$7;
+# a handful of missions in a short window can burn through a modest balance
+# without anyone noticing. Reactive, not predictive: blocks a NEW mission
+# once the trailing-24h total already meets the cap, rather than trying to
+# estimate a mission's cost before it runs. Adjust via env var, no code
+# change needed.
+_DAILY_COST_CAP_USD = float(os.getenv("ZAMO_DAILY_COST_CAP_USD", "15.0"))
+
+
+async def _trailing_24h_spend_usd() -> float:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(func.sum(ZamoMission.estimated_cost_usd)).where(ZamoMission.created_at >= cutoff)
+        )
+        return result.scalar() or 0.0
 
 
 async def create_mission(
@@ -105,6 +124,18 @@ async def run_mission(mission_id: uuid.UUID) -> None:
     execution infrastructure (plan refinement 2), not the long-term mission
     runner; a future Automation phase replaces BackgroundTasks with a durable
     job runner without changing anything below this signature."""
+    spend = await _trailing_24h_spend_usd()
+    if spend >= _DAILY_COST_CAP_USD:
+        log.warning(
+            "Mission %s blocked — daily AI spend cap reached ($%.2f of $%.2f in the trailing 24h)",
+            mission_id, spend, _DAILY_COST_CAP_USD,
+        )
+        await _set_state(mission_id, "blocked", reason=(
+            f"Daily AI spend cap reached (${spend:.2f} of ${_DAILY_COST_CAP_USD:.2f} in the trailing "
+            "24h). Raise ZAMO_DAILY_COST_CAP_USD or wait for the window to roll over to run more missions."
+        ))
+        return
+
     async with AsyncSessionLocal() as db:
         mission = await db.get(ZamoMission, mission_id)
         if not mission:
@@ -140,6 +171,7 @@ async def run_mission(mission_id: uuid.UUID) -> None:
     try:
         await _set_state(mission_id, "review")
         await _persist_recommendation(mission_id, result, department.contract)
+        await _record_usage(mission_id, result)
         await _set_state(mission_id, "completed")
         await _measure_and_learn(mission_id, result)
         await _remember(mission_id, result, department.contract)
@@ -209,6 +241,29 @@ async def _persist_recommendation(
             await db.commit()
 
     return rec
+
+
+# Pricing for the model reasoning.py uses (claude-opus-5) — update if that changes.
+# Foundation for a future AI-operating-budget feature; not built yet, just captured.
+_INPUT_COST_PER_MTOK = 5.00
+_OUTPUT_COST_PER_MTOK = 25.00
+
+
+async def _record_usage(mission_id: uuid.UUID, result: DepartmentResult) -> None:
+    if not result.input_tokens and not result.output_tokens:
+        return
+    cost = (
+        result.input_tokens / 1_000_000 * _INPUT_COST_PER_MTOK
+        + result.output_tokens / 1_000_000 * _OUTPUT_COST_PER_MTOK
+    )
+    async with AsyncSessionLocal() as db:
+        mission = await db.get(ZamoMission, mission_id)
+        if not mission:
+            return
+        mission.input_tokens = result.input_tokens
+        mission.output_tokens = result.output_tokens
+        mission.estimated_cost_usd = round(cost, 6)
+        await db.commit()
 
 
 async def _measure_and_learn(mission_id: uuid.UUID, result: DepartmentResult) -> None:

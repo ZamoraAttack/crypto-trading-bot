@@ -94,3 +94,8 @@ class DepartmentResult:
     what_changed: str | None = None
     lessons: str | None = None
     knowledge_contributions: list[KnowledgeContribution] = field(default_factory=list)
+    # Token usage for the reasoning pass that produced this result — set by
+    # run_department_reasoning() (Ch3), read by mission_engine to record a
+    # per-mission cost estimate. 0 for anything that doesn't call Claude.
+    input_tokens: int = 0
+    output_tokens: int = 0

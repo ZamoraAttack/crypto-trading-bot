@@ -168,12 +168,27 @@ async def run_department_reasoning(
     system = _build_system_prompt(contract, context)
     tools = [_WEB_SEARCH_TOOL, _RESULT_TOOL]
     messages: list[dict] = [{"role": "user", "content": f"Begin the mission: {context.objective}"}]
+    # web_search's dynamic filtering can invoke code_execution as a hidden
+    # server tool. Once any turn uses it, continuing the conversation on a
+    # later request requires pinning the same sandbox via `container` — the
+    # API 400s ("container_id is required...") without it, even when the
+    # code_execution tool_use/result pair in history is fully resolved.
+    container_id: str | None = None
+    total_input_tokens = 0
+    total_output_tokens = 0
 
     for _ in range(_MAX_TOOL_TURNS):
-        response = await client.messages.create(
-            model=_MODEL, max_tokens=8192, system=system, tools=tools,
-            messages=messages, output_config={"effort": "high"},
-        )
+        create_kwargs = {
+            "model": _MODEL, "max_tokens": 8192, "system": system, "tools": tools,
+            "messages": messages, "output_config": {"effort": "high"},
+        }
+        if container_id:
+            create_kwargs["container"] = container_id
+        response = await client.messages.create(**create_kwargs)
+        if getattr(response, "container", None):
+            container_id = response.container.id
+        total_input_tokens += response.usage.input_tokens
+        total_output_tokens += response.usage.output_tokens
 
         if response.stop_reason == "refusal":
             category = getattr(response.stop_details, "category", None) if response.stop_details else None
@@ -184,35 +199,56 @@ async def run_department_reasoning(
             None,
         )
         if result_block:
-            # minItems in the schema is only a hint to the model, not a
-            # server-enforced constraint — verify in code rather than trust
-            # it, since an empty knowledge_contributions array means this
-            # mission's work would be silently unfindable later (Ch4).
+            # `required`/minItems in the tool's input_schema are hints to the
+            # model, not server-enforced constraints (confirmed by direct
+            # observation on both fronts) — verify in code and force a real
+            # retry turn rather than trusting the schema alone.
+            problems = []
+            if not result_block.input.get("recommendation"):
+                problems.append("`recommendation` is missing — it is required.")
+            if not result_block.input.get("what_happened"):
+                problems.append("`what_happened` is missing — it is required.")
             if not result_block.input.get("knowledge_contributions"):
-                messages.append({"role": "assistant", "content": response.content})
+                problems.append(
+                    "knowledge_contributions was empty. You must include at least one durable "
+                    "finding (a decision, technical fact, or market insight) before this mission "
+                    "can complete."
+                )
+            if problems:
+                content = _drop_dangling_tool_use(response.content, keep_ids=frozenset({result_block.id}))
+                messages.append({"role": "assistant", "content": content})
                 messages.append({
                     "role": "user",
                     "content": [{
                         "type": "tool_result",
                         "tool_use_id": result_block.id,
-                        "content": (
-                            "knowledge_contributions was empty. You must include at least one durable "
-                            "finding (a decision, technical fact, or market insight) before this mission "
-                            "can complete. Call submit_department_result again with a non-empty "
-                            "knowledge_contributions array."
-                        ),
+                        "content": " ".join(problems) + f" Call {_RESULT_TOOL_NAME} again with the complete, corrected result.",
                         "is_error": True,
                     }],
                 })
                 continue
-            return _parse_result(result_block.input)
+            result = _parse_result(result_block.input)
+            result.input_tokens = total_input_tokens
+            result.output_tokens = total_output_tokens
+            return result
 
         if response.stop_reason == "pause_turn":
             # Server-side tool (web_search) hit its internal iteration limit —
             # resume by re-sending the same turn per documented guidance. Do
             # NOT add a synthetic "Continue" message; the API detects the
             # trailing server_tool_use block and resumes automatically.
-            messages = [messages[0], {"role": "assistant", "content": response.content}]
+            #
+            # web_search's dynamic filtering can invoke code_execution as a
+            # hidden server tool we never declared ourselves. If the pause
+            # lands mid-way through one of those hidden calls, the trailing
+            # block is a tool_use with no matching result, and the API 400s
+            # on resume ("tool use ... found without a corresponding ...
+            # tool_result block") since we have no result to supply for a
+            # tool we didn't declare. Drop any such dangling block so the
+            # resumed turn continues cleanly — the model can re-issue the
+            # search if it still needs it.
+            content = _drop_dangling_tool_use(response.content)
+            messages = [messages[0], {"role": "assistant", "content": content}]
             continue
 
         if response.stop_reason == "tool_use":
@@ -222,13 +258,39 @@ async def run_department_reasoning(
             raise RuntimeError(f"Department reasoning requested an unexpected tool call: {names}")
 
         # end_turn (or similar) without submitting a result yet — nudge and continue.
-        messages.append({"role": "assistant", "content": response.content})
+        messages.append({"role": "assistant", "content": _drop_dangling_tool_use(response.content)})
         messages.append({
             "role": "user",
             "content": f"Continue gathering evidence, then call {_RESULT_TOOL_NAME} with your complete result.",
         })
 
     raise RuntimeError("Department reasoning exceeded its tool-use step budget without a result")
+
+
+_RESULT_BLOCK_TYPES = {
+    "tool_result", "code_execution_tool_result", "bash_code_execution_tool_result",
+    "text_editor_code_execution_tool_result", "web_search_tool_result", "web_fetch_tool_result",
+}
+
+
+def _drop_dangling_tool_use(content: list, *, keep_ids: frozenset[str] = frozenset()) -> list:
+    """Remove any tool_use/server_tool_use block with no matching result block
+    elsewhere in the same content list — a pause_turn can land mid-way through
+    a server-side tool call, leaving its use block unresolved.
+
+    keep_ids exempts block IDs the caller is about to resolve itself in a
+    follow-up message (e.g. submit_department_result, answered manually) —
+    without this, such a block looks identical to a genuinely dangling one at
+    filter time, since its result hasn't been appended yet."""
+    resolved_ids = {
+        getattr(b, "tool_use_id", None)
+        for b in content
+        if getattr(b, "type", None) in _RESULT_BLOCK_TYPES
+    } | keep_ids
+    return [
+        b for b in content
+        if not (getattr(b, "type", None) in ("tool_use", "server_tool_use") and getattr(b, "id", None) not in resolved_ids)
+    ]
 
 
 def _parse_result(raw: dict) -> DepartmentResult:
