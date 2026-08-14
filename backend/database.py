@@ -152,6 +152,11 @@ class ZamoMission(Base):
     last_heartbeat_at      = Column(DateTime(timezone=True), nullable=True)
     attempt_count          = Column(Integer, nullable=False, default=0)
     blocked_reason         = Column(Text, nullable=True)
+    # Token usage foundation for a future AI-operating-budget feature — not
+    # built yet, just captured so the data exists when that work starts.
+    input_tokens           = Column(Integer, nullable=True)
+    output_tokens          = Column(Integer, nullable=True)
+    estimated_cost_usd     = Column(Float, nullable=True)
     created_at             = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at             = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
