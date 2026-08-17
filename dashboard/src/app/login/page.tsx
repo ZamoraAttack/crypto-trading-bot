@@ -31,7 +31,7 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-xs bg-surface border border-border rounded-xl p-8 space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">Trading Bot</h1>
+          <h1 className="text-xl font-bold text-white leading-tight">Zamora Advanced Machine Operations</h1>
           <p className="text-muted text-sm mt-1">Enter your PIN</p>
         </div>
 
