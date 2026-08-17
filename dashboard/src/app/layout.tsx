@@ -3,7 +3,7 @@ import "./globals.css";
 import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Trading Bot Dashboard",
+  title: "Zamora Advanced Machine Operations",
   description: "Unified crypto + Polymarket bot monitor",
 };
 
