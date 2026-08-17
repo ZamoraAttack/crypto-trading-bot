@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const CORRECT_PIN = "1748";
-
 export async function POST(request: NextRequest) {
+  const correctPin = process.env.DASHBOARD_PIN;
+  if (!correctPin) {
+    return NextResponse.json({ error: "Server misconfigured: DASHBOARD_PIN not set" }, { status: 500 });
+  }
+
   const body = await request.json();
 
-  if (!body.pin || body.pin !== CORRECT_PIN) {
+  if (!body.pin || body.pin !== correctPin) {
     return NextResponse.json({ error: "Incorrect PIN" }, { status: 401 });
   }
 
