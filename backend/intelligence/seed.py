@@ -17,7 +17,7 @@ _ROSTER = [
     ("marketing", "Marketing Department", "planned"),
     ("finance", "Finance Department", "planned"),
     ("operations", "Operations Department", "planned"),
-    ("relationship_management", "Relationship Management Department", "planned"),
+    ("relationship_management", "Relationship Management Department", "active"),
     ("customer_discovery", "Customer Discovery Department", "active"),
     ("engineering", "Engineering Department", "planned"),
 ]
